@@ -509,7 +509,7 @@ function StaffMultiPickModal({title, subtitle, storeId, onConfirm, onClose}) {
 function AmountVerifyModal({task, recipe, onConfirm, onCancel}) {
   const [mode, setMode] = useState("confirm"); // "confirm" | "detail"
   const [inputs, setInputs] = useState(
-    recipe ? recipe.ingredients.reduce((a,ing)=>({...a,[ing.name]:""}),{}) : {}
+    recipe ? recipe.ingredients.reduce((a,ing)=>({...a,[ing.name]:String(ing.amount ?? "")}),{}) : {}
   );
 
   // レシピなし → ワンタップ完了
@@ -4843,10 +4843,13 @@ function AppInner() {
     setCurrentUserId(userId);
     if (storeId) setSelectedStoreId(storeId);
     setIsLoggedIn(true);
+    try { localStorage.setItem("mise_auth", JSON.stringify({token, userId, storeId: storeId||null})); } catch {}
     loadAppData(); // ログイン後にトークン付きで bootstrap
   };
 
   const handleLogout = () => {
+    api.setAuthToken(null);
+    try { localStorage.removeItem("mise_auth"); } catch {}
     setCurrentUserId(null);
     setSelectedStoreId(null);
     setIsLoggedIn(false);
@@ -4958,7 +4961,14 @@ function AppInner() {
       syncEnabledRef.current = true;
     } catch (e) {
       console.error("Failed to bootstrap app data:", e);
-      setBootstrapError("バックエンドから初期データを取得できませんでした");
+      if (String(e?.message||e).includes("401")) {
+        // トークン期限切れ → ログイン画面へ
+        api.setAuthToken(null);
+        try { localStorage.removeItem("mise_auth"); } catch {}
+        setCurrentUserId(null); setSelectedStoreId(null); setIsLoggedIn(false);
+      } else {
+        setBootstrapError("バックエンドから初期データを取得できませんでした");
+      }
     } finally {
       setIsBootstrapping(false);
     }
@@ -4984,7 +4994,19 @@ function AppInner() {
     }
   };
 
-  // bootstrap はログイン後に handleLogin から実行する（トークンが必要なため）
+  // 起動時: 保存済みトークンがあればログイン状態を復元（更新してもログイン維持）
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("mise_auth") || "null");
+      if (saved && saved.token) {
+        api.setAuthToken(saved.token);
+        setCurrentUserId(saved.userId);
+        if (saved.storeId) setSelectedStoreId(saved.storeId);
+        setIsLoggedIn(true);
+        loadAppData();
+      }
+    } catch {}
+  }, []);
 
   const syncEnabled = !isBootstrapping && syncEnabledRef.current;
   useRemoteStateSync(syncEnabled, "stores", stores, notify);
