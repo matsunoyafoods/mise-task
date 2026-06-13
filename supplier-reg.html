@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>業者情報登録 | MISE TASK</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <script src="./config.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;800&display=swap" rel="stylesheet"/>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #07070f;
+      color: #e8e8f0;
+      font-family: 'Noto Sans JP', sans-serif;
+      min-height: 100vh;
+    }
+    input { font-family: inherit; }
+    button { font-family: inherit; }
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: #0c0c18; }
+    ::-webkit-scrollbar-thumb { background: #2a2a3a; border-radius: 4px; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+// ═══════════════════════════════════════════════════════════════════════
+// ██  CONFIG — エンジニア向け設定（index.html の CONFIG と同じURLを設定）
+// ═══════════════════════════════════════════════════════════════════════
+const CONFIG = {
+  API_BASE: window.MISE_TASK_CONFIG?.API_BASE || "",
+  USE_DEMO_DATA: false,
+};
+
+// ── API Client ──
+const api = {
+  _fetch: async (endpoint, options = {}) => {
+    const res = await fetch(CONFIG.API_BASE + endpoint, {
+      headers: { "Content-Type": "application/json", ...options.headers },
+      ...options,
+    });
+    if (!res.ok) {
+      let message = `API Error: ${res.status}`;
+      try {
+        const payload = await res.json();
+        if (payload?.error) message = payload.error;
+      } catch {}
+      throw new Error(message);
+    }
+    return res.json();
+  },
+  suppliers: {
+    // トークンから業者情報を取得 → {name, token, ...}
+    getByToken: (token) => api._fetch(`/suppliers/by-token/${token}`),
+    // 業者セルフ登録を完了 → {success: true}
+    register: (token, data) => api._fetch(`/suppliers/register`, { method: "POST", body: JSON.stringify({ token, ...data }) }),
+  },
+};
+
+// URLパラメータからtokenを取得
+const getToken = () => new URLSearchParams(window.location.search).get("token");
+
+const METHODS = {
+  email: {
+    icon: "📧", label: "メール", color: "#0077B6",
+    inputLabel: "受注用のメールアドレス",
+    placeholder: "例: order@your-company.co.jp",
+    field: "email",
+    guide: [
+      { step: "1", text: "普段使っているメールアドレスをそのまま入力してください" },
+      { step: "💡", text: "発注が届いたときにこのアドレスにメールが届きます" },
+    ]
+  },
+  line: {
+    icon: "💬", label: "LINE", color: "#06C755",
+    inputLabel: "LINEのID（@から始まる番号）",
+    placeholder: "例: @abc-1234xyz",
+    field: "lineId",
+    guide: [
+      { step: "1", text: "LINEアプリを開く" },
+      { step: "2", text: "右下の「ホーム」→ 右上の自分のアイコンをタップ" },
+      { step: "3", text: "「プロフィール」画面の右上に歯車（設定）ボタンが表示されます" },
+      { step: "4", text: "IDをコピーして下の欄にそのままペーストしてください" },
+      { step: "💡", text: "IDが「@」から始まる場合はそのまま入力してください" },
+    ]
+  },
+  instagram: {
+    icon: "📸", label: "Instagram", color: "#E1306C",
+    inputLabel: "Instagramのユーザー名（@から始まる）",
+    placeholder: "例: @your_account",
+    field: "instagramId",
+    guide: [
+      { step: "1", text: "Instagramアプリを開く" },
+      { step: "2", text: "右下のプロフィールアイコンをタップ" },
+      { step: "3", text: "名前の下に「@○○○○」と表示されているのがユーザー名です" },
+      { step: "4", text: "そのまま下の欄に入力してください" },
+    ]
+  },
+  twitter: {
+    icon: "✕", label: "X (Twitter)", color: "#aaa",
+    inputLabel: "X（旧Twitter）のユーザー名",
+    placeholder: "例: @your_account",
+    field: "twitterId",
+    guide: [
+      { step: "1", text: "Xアプリを開く" },
+      { step: "2", text: "左上のアイコン → 「プロフィール」をタップ" },
+      { step: "3", text: "名前の下に「@○○○○」と表示されているのがユーザー名です" },
+      { step: "4", text: "そのまま下の欄に入力してください" },
+    ]
+  },
+  other: {
+    icon: "📝", label: "その他", color: "#6b7280",
+    inputLabel: "受注方法（自由記入）",
+    placeholder: "例: FAX 03-1234-5678 / チャットワーク / Slack など",
+    field: "otherDesc",
+    guide: [
+      { step: "💡", text: "メール・LINE以外の方法で発注を受け取りたい場合は、方法と連絡先を記入してください" },
+    ]
+  },
+};
+
+function SupplierRegPage() {
+  const token = getToken();
+  const [supplierLoaded, setSupplierLoaded] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const [step, setStep] = useState(1);
+  const [methodStep, setMethodStep] = useState(0);
+  const [form, setForm] = useState({
+    companyName: "",
+    contactName: "",
+    tel: "",
+    methods: [],
+    email: "",
+    lineId: "",
+    instagramId: "",
+    twitterId: "",
+    otherDesc: "",
+  });
+
+  // API接続時: トークンから業者情報を取得
+  useEffect(() => {
+    if (token && !supplierLoaded) {
+      api.suppliers.getByToken(token).then(data => {
+        if (data?.name) set("companyName", data.name);
+        setSupplierLoaded(true);
+      }).catch(() => {
+        setLoadError("業者トークンの読み込みに失敗しました");
+        setSupplierLoaded(true);
+      });
+    }
+  }, [token, supplierLoaded]);
+
+  const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const toggleMethod = m => setForm(p => ({
+    ...p,
+    methods: p.methods.includes(m) ? p.methods.filter(x => x !== m) : [...p.methods, m]
+  }));
+
+  const currentMethod = form.methods[methodStep];
+  const currentCfg = currentMethod ? METHODS[currentMethod] : null;
+  const isLastMethod = methodStep >= form.methods.length - 1;
+
+  const save = async () => {
+    try {
+      setSaving(true);
+      await api.suppliers.register(token, {
+        companyName: form.companyName,
+        contactName: form.contactName,
+        tel: form.tel,
+        methods: form.methods,
+        email: form.email,
+        lineId: form.lineId,
+        instagramId: form.instagramId,
+        twitterId: form.twitterId,
+        otherDesc: form.otherDesc,
+      });
+      setStep(4);
+    } catch (e) {
+      console.error("Registration failed:", e);
+      setLoadError("登録に失敗しました。時間をおいてもう一度お試しください。");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const nextMethodOrSave = () => {
+    if (isLastMethod) save();
+    else setMethodStep(p => p + 1);
+  };
+
+  // プログレスバー
+  const Progress = () => (
+    <div style={{ display: "flex", alignItems: "center", marginBottom: 28 }}>
+      {["会社情報", "受注方法", "連携設定"].map((label, i) => {
+        const n = i + 1;
+        const done = step > n, active = step === n;
+        return (
+          <React.Fragment key={n}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
+              <div style={{
+                width: 32, height: 32, borderRadius: "50%",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 13, fontWeight: 800,
+                background: done ? "#6D28D9" : active ? "#a78bfa" : "#1a1a2a",
+                color: "#fff",
+                border: active ? "2px solid #a78bfa" : "2px solid transparent",
+                transition: "all .2s"
+              }}>
+                {done ? "✓" : n}
+              </div>
+              <span style={{ fontSize: 10, color: active ? "#a78bfa" : done ? "#6D28D9" : "#6b7280", whiteSpace: "nowrap" }}>
+                {label}
+              </span>
+            </div>
+            {i < 2 && (
+              <div style={{ flex: 1, height: 2, background: step > n ? "#6D28D9" : "#1a1a2a", margin: "0 6px", marginBottom: 18, transition: "background .3s" }} />
+            )}
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#07070f", display: "flex", flexDirection: "column", alignItems: "center", padding: "24px 16px 48px" }}>
+
+      {/* ヘッダー */}
+      <div style={{ width: "100%", maxWidth: 480, marginBottom: 24 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg,#6D28D9,#E85D04)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>
+            🍜
+          </div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#fff", letterSpacing: ".05em" }}>MISE TASK</div>
+            <div style={{ fontSize: 10, color: "#6b7280" }}>業者情報登録ポータル</div>
+          </div>
+        </div>
+      </div>
+
+      {/* メインカード */}
+      <div style={{ width: "100%", maxWidth: 480, background: "#0c0c18", border: "1px solid #1e1e2e", borderRadius: 20, padding: "28px 24px" }}>
+
+        {step < 4 && (
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#fff", marginBottom: 4 }}>🏢 業者情報の登録</div>
+            <div style={{ fontSize: 12, color: "#8b95a1" }}>発注書の受け取り方法を登録します。3ステップで完了します。</div>
+            {loadError && <div style={{ marginTop: 10, fontSize: 12, color: "#f87171" }}>{loadError}</div>}
+          </div>
+        )}
+
+        {step < 4 && <Progress />}
+
+        {/* ── Step 1: 会社情報 ── */}
+        {step === 1 && (
+          <div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 24 }}>
+              {[
+                { label: "会社名 ＊", key: "companyName", placeholder: "例: 田中青果株式会社", required: true, type: "text" },
+                { label: "担当者名", key: "contactName", placeholder: "例: 田中 一郎", type: "text" },
+                { label: "電話番号", key: "tel", placeholder: "例: 090-1234-5678", type: "tel" },
+              ].map(f => (
+                <div key={f.key}>
+                  <div style={{ fontSize: 11, color: "#8b95a1", marginBottom: 6, fontWeight: 700 }}>{f.label}</div>
+                  <input
+                    type={f.type}
+                    value={form[f.key]}
+                    onChange={e => set(f.key, e.target.value)}
+                    placeholder={f.placeholder}
+                    style={{
+                      width: "100%", padding: "13px 14px",
+                      background: "#07070f",
+                      border: "1.5px solid " + (f.required && !form[f.key] ? "#7f1d1d" : form[f.key] ? "#6D28D9" : "#2a2a3a"),
+                      color: "#eee", borderRadius: 10, fontSize: 15, outline: "none",
+                      transition: "border .2s"
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={() => form.companyName.trim() && setStep(2)}
+              style={{
+                width: "100%", padding: 14,
+                background: form.companyName.trim() ? "linear-gradient(90deg,#6D28D9,#7c3aed)" : "#1a1a2a",
+                color: "#fff", border: "none", borderRadius: 12,
+                fontSize: 15, fontWeight: 800,
+                cursor: form.companyName.trim() ? "pointer" : "default",
+                opacity: form.companyName.trim() ? 1 : 0.5
+              }}>
+              次へ →
+            </button>
+          </div>
+        )}
+
+        {/* ── Step 2: 受注方法を選ぶ ── */}
+        {step === 2 && (
+          <div>
+            <div style={{ fontSize: 13, color: "#9ca3af", marginBottom: 16, lineHeight: 1.6 }}>
+              発注書をどの方法で受け取りますか？<br/>
+              <span style={{ color: "#a78bfa", fontWeight: 700 }}>複数選択できます</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 24 }}>
+              {Object.entries(METHODS).map(([key, cfg]) => {
+                const sel = form.methods.includes(key);
+                return (
+                  <button key={key} onClick={() => toggleMethod(key)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 14,
+                      padding: "15px 16px",
+                      background: sel ? cfg.color + "1a" : "#07070f",
+                      border: "2px solid " + (sel ? cfg.color : "#1e1e2e"),
+                      borderRadius: 14, cursor: "pointer", textAlign: "left",
+                      transition: "all .15s"
+                    }}>
+                    <div style={{
+                      width: 44, height: 44, borderRadius: 12,
+                      background: sel ? cfg.color : cfg.color + "22",
+                      border: "1px solid " + cfg.color + "55",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 22, flexShrink: 0, transition: "all .15s"
+                    }}>
+                      {cfg.icon}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: sel ? "#fff" : "#ccc" }}>{cfg.label}</div>
+                      <div style={{ fontSize: 11, color: "#6b7280", marginTop: 3 }}>{cfg.inputLabel}</div>
+                    </div>
+                    <div style={{
+                      width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
+                      background: sel ? cfg.color : "transparent",
+                      border: "2px solid " + (sel ? cfg.color : "#2a2a3a"),
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      transition: "all .15s"
+                    }}>
+                      {sel && <span style={{ color: "#fff", fontSize: 13, fontWeight: 800, lineHeight: 1 }}>✓</span>}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => setStep(1)}
+                style={{ flex: 1, padding: 13, background: "#1a1a2e", color: "#8b95a1", border: "none", borderRadius: 10, fontSize: 14, cursor: "pointer" }}>
+                ← 戻る
+              </button>
+              <button
+                onClick={() => { if (form.methods.length > 0) { setMethodStep(0); setStep(3); } }}
+                style={{
+                  flex: 2, padding: 13,
+                  background: form.methods.length > 0 ? "linear-gradient(90deg,#6D28D9,#7c3aed)" : "#1a1a2a",
+                  color: "#fff", border: "none", borderRadius: 12,
+                  fontSize: 15, fontWeight: 800,
+                  cursor: form.methods.length > 0 ? "pointer" : "default",
+                  opacity: form.methods.length > 0 ? 1 : 0.5
+                }}>
+                次へ →{form.methods.length > 0 ? `（${form.methods.length}件選択）` : ""}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Step 3: 方法ごとに1画面ずつ入力 ── */}
+        {step === 3 && currentCfg && (
+          <div>
+            {/* 複数選択時の進捗バー */}
+            {form.methods.length > 1 && (
+              <div style={{ display: "flex", gap: 6, marginBottom: 18 }}>
+                {form.methods.map((m, i) => (
+                  <div key={m} style={{ flex: 1, height: 5, borderRadius: 3, background: i <= methodStep ? METHODS[m].color : "#1a1a2a", transition: "background .3s" }} />
+                ))}
+              </div>
+            )}
+
+            {/* 方法ヘッダー */}
+            <div style={{
+              display: "flex", alignItems: "center", gap: 14,
+              padding: "16px", marginBottom: 20,
+              background: currentCfg.color + "11",
+              border: "1.5px solid " + currentCfg.color + "44",
+              borderRadius: 14
+            }}>
+              <div style={{
+                width: 48, height: 48, borderRadius: 14,
+                background: currentCfg.color,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 24, flexShrink: 0
+              }}>
+                {currentCfg.icon}
+              </div>
+              <div>
+                <div style={{ fontSize: 17, fontWeight: 800, color: "#fff" }}>{currentCfg.label}</div>
+                {form.methods.length > 1 && (
+                  <div style={{ fontSize: 11, color: "#8b95a1", marginTop: 2 }}>
+                    {methodStep + 1} / {form.methods.length} 番目の設定
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 取得ガイド */}
+            <div style={{ background: "#07070f", border: "1px solid #1e1e2e", borderRadius: 12, padding: "14px 16px", marginBottom: 18 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#a78bfa", marginBottom: 12 }}>
+                📋 {currentCfg.inputLabel}の確認方法
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {currentCfg.guide.map((g, i) => (
+                  <div key={i} style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                    <div style={{
+                      width: 24, height: 24, borderRadius: "50%", flexShrink: 0, marginTop: 1,
+                      background: g.step === "💡" ? "#1a1a2a" : currentCfg.color,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: g.step === "💡" ? 14 : 11, fontWeight: 800, color: "#fff"
+                    }}>
+                      {g.step}
+                    </div>
+                    <div style={{ fontSize: 13, color: g.step === "💡" ? "#fb923c" : "#ccc", lineHeight: 1.65, flex: 1 }}>
+                      {g.text}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* 入力欄（1つだけ） */}
+            <div style={{ marginBottom: 24 }}>
+              <div style={{ fontSize: 12, color: "#8b95a1", marginBottom: 8, fontWeight: 700 }}>
+                {currentCfg.inputLabel} ＊
+              </div>
+              <input
+                autoFocus
+                value={form[currentCfg.field]}
+                onChange={e => set(currentCfg.field, e.target.value)}
+                placeholder={currentCfg.placeholder}
+                style={{
+                  width: "100%", padding: "14px",
+                  background: "#07070f",
+                  border: "2px solid " + (form[currentCfg.field] ? currentCfg.color : "#2a2a3a"),
+                  color: "#eee", borderRadius: 12, fontSize: 15, outline: "none",
+                  transition: "border .2s"
+                }}
+              />
+              {form[currentCfg.field] && (
+                <div style={{ marginTop: 8, fontSize: 12, color: "#4ade80", display: "flex", alignItems: "center", gap: 6 }}>
+                  ✓ 入力されました
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => methodStep === 0 ? setStep(2) : setMethodStep(p => p - 1)}
+                style={{ flex: 1, padding: 13, background: "#1a1a2e", color: "#8b95a1", border: "none", borderRadius: 10, fontSize: 14, cursor: "pointer" }}>
+                ← 戻る
+              </button>
+              <button onClick={nextMethodOrSave}
+                style={{
+                  flex: 2, padding: 14,
+                  background: isLastMethod ? "linear-gradient(90deg,#059669,#10b981)" : "linear-gradient(90deg,#6D28D9,#7c3aed)",
+                  color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 800, cursor: "pointer"
+                }}>
+                {isLastMethod ? "✓ 登録を完了する" : "次の設定へ →"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Step 4: 完了 ── */}
+        {step === 4 && (
+          <div style={{ textAlign: "center", padding: "16px 0 8px" }}>
+            <div style={{ fontSize: 56, marginBottom: 12 }}>🎉</div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: "#fff", marginBottom: 8 }}>登録が完了しました！</div>
+            <div style={{ fontSize: 13, color: "#9ca3af", marginBottom: 28, lineHeight: 1.9 }}>
+              {form.companyName} 様<br/>
+              発注が届いたら以下の方法でご連絡します
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, textAlign: "left", marginBottom: 28 }}>
+              {form.methods.map(m => {
+                const cfg = METHODS[m];
+                const val = form[cfg.field];
+                return (
+                  <div key={m} style={{
+                    display: "flex", alignItems: "center", gap: 14,
+                    padding: "14px 16px",
+                    background: cfg.color + "11", border: "1px solid " + cfg.color + "33",
+                    borderRadius: 12
+                  }}>
+                    <span style={{ fontSize: 22 }}>{cfg.icon}</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "#eee" }}>{cfg.label}</div>
+                      <div style={{ fontSize: 12, color: "#6b7280", marginTop: 3 }}>{val || "（未入力）"}</div>
+                    </div>
+                    <span style={{ fontSize: 16, color: "#4ade80" }}>✓</span>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ background: "#0a1a0a", border: "1px solid #14532d33", borderRadius: 12, padding: "14px 16px", fontSize: 12, color: "#4ade8099", lineHeight: 1.7 }}>
+              登録内容はお店側のシステムに反映されました。<br/>
+              ご協力ありがとうございました。
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* フッター */}
+      <div style={{ marginTop: 24, fontSize: 10, color: "#2a2a3a", textAlign: "center" }}>
+        MISE TASK · Powered by Anthropic Claude
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.render(<SupplierRegPage />, document.getElementById("root"));
+</script>
+</body>
+</html>

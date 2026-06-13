@@ -1,0 +1,8 @@
+# Supabase プロジェクト設定（抜粋）
+# project_id は `supabase link` 時に自動設定される
+
+[functions.api]
+# ⚠️ 重要: /auth/* を公開にするため、プラットフォーム側の JWT 検証を無効化し、
+#   認証は関数内（_shared/auth.ts）で自前に行う。
+#   これを true のままにすると、ログイン前のリクエストがゲートで弾かれる。
+verify_jwt = false
