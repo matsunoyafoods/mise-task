@@ -3476,7 +3476,7 @@ function TaskManagerView({routines, setRoutines, allPrepTasks, setAllPrepTasks, 
 // ─────────────────────────────────────────────────────────────────────────
 // TOP VIEW  直感的なメイン操作画面
 // ─────────────────────────────────────────────────────────────────────────
-function TopView({allPrepTasks, setAllPrepTasks, cleanTasks, setCleanTasks, inventory, setInventory, recipes, currentUserId, notify, storeFilter, paletteDrag, setPaletteDrag, extDragTask, setExtDragTask, extDragOver, setExtDragOver, onDayChange, onStoreChange}) {
+function TopView({allPrepTasks, setAllPrepTasks, cleanTasks, setCleanTasks, inventory, setInventory, recipes, currentUserId, notify, storeFilter, routines=[], paletteDrag, setPaletteDrag, extDragTask, setExtDragTask, extDragOver, setExtDragOver, onDayChange, onStoreChange}) {
   const [activeDay, setActiveDay_]   = useState(0); // 0=今日, 1=明日, 2=明後日, 3=3日後
   const [activeStore, setActiveStore_] = useState(storeFilter || 1);
   const setActiveDay = (v) => { setActiveDay_(v); if(onDayChange) onDayChange(v); };
@@ -3519,6 +3519,28 @@ function TopView({allPrepTasks, setAllPrepTasks, cleanTasks, setCleanTasks, inve
 
   // 在庫不足
   const lowStock = inventory.filter(i=>i.stock<=i.minStock);
+
+  // ── 今日(表示日)の仕込みタスクをルーティンから自動生成 ──
+  useEffect(() => {
+    if (!routines || routines.length === 0) return;
+    const dow = new Date(viewDate + "T00:00:00").getDay();
+    const matchToday = (r) =>
+      r.freq==="daily"   ? true :
+      r.freq==="weekday" ? dow>=1&&dow<=5 :
+      r.freq==="weekend" ? dow===0||dow===6 :
+      r.freq==="custom"  ? (r.customDays||[]).includes(dow) :
+      r.freq==="once"    ? r.onceDate===viewDate :
+      r.freq==="free"    ? (r.freeDates||[]).includes(viewDate) : false;
+    const matches = routines.filter(r => r.active && r.category==="prep" && r.store===viewStore && matchToday(r));
+    const toAdd = matches.filter(r => !allPrepTasks.some(t => t.routineId===r.id && t.date===viewDate && t.store===viewStore));
+    if (toAdd.length === 0) return;
+    setAllPrepTasks(p => [...p, ...toAdd.map(r => ({
+      id: "pt_" + r.id + "_" + viewDate,
+      routineId: r.id, name: r.name, recipeId: r.recipeId || null,
+      deadline: r.deadline || "10:00", store: viewStore, assignedTo: r.assignedTo || null,
+      date: viewDate, completedAt: null, completedBy: null, amountVerified: false, amountLog: [],
+    }))]);
+  }, [routines, viewDate, viewStore, allPrepTasks]);
 
   // タスク完了トグル
   const toggleDone = (task) => {
@@ -3807,20 +3829,32 @@ function TopView({allPrepTasks, setAllPrepTasks, cleanTasks, setCleanTasks, inve
             </div>
           )}
 
-          {todo.map(task=>(
-            <div key={task.id}
-              onDragOver={e=>{e.preventDefault(); if(dragTask&&dragTask.id!==task.id&&!paletteDrag) setDragOverTask(task.id);}}
-              onDragLeave={()=>setDragOverTask(null)}
-              onDrop={e=>{e.preventDefault(); if(dragTask&&!paletteDrag){handleReorder(dragTask,task);}}}
-              style={{outline:dragOverTask===task.id?"2px dashed #E85D04":"2px solid transparent",borderRadius:12,transition:"outline .1s"}}>
-              <TaskCard task={task} onToggle={()=>toggleDone(task)}
-                onDelete={isEditable?()=>setDeleteConfirm(task):null}
-                onDragStart={()=>setDragTask(task)}
-                onDragEnd={()=>{setDragTask(null);setDragOver(null);setDragOverTask(null);}}
-                catColor={catColor[task._cat]} catIcon={catIcon[task._cat]} catLabel={catLabel[task._cat]}
-                currentUserId={currentUserId}/>
-            </div>
-          ))}
+          {["prep","clean"].map(cat=>{
+            const items = todo.filter(t=>t._cat===cat);
+            if (items.length===0) return null;
+            return (
+              <div key={cat} style={{marginBottom:12}}>
+                <div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 6px",marginBottom:4,color:catColor[cat],fontSize:12,fontWeight:700}}>
+                  <span>{catIcon[cat]} {catLabel[cat]}</span>
+                  <span style={{fontSize:10,background:catColor[cat]+"22",padding:"1px 6px",borderRadius:5}}>{items.length}</span>
+                </div>
+                {items.map(task=>(
+                  <div key={task.id}
+                    onDragOver={e=>{e.preventDefault(); if(dragTask&&dragTask.id!==task.id&&!paletteDrag) setDragOverTask(task.id);}}
+                    onDragLeave={()=>setDragOverTask(null)}
+                    onDrop={e=>{e.preventDefault(); if(dragTask&&!paletteDrag){handleReorder(dragTask,task);}}}
+                    style={{outline:dragOverTask===task.id?"2px dashed #E85D04":"2px solid transparent",borderRadius:12,transition:"outline .1s"}}>
+                    <TaskCard task={task} onToggle={()=>toggleDone(task)}
+                      onDelete={isEditable?()=>setDeleteConfirm(task):null}
+                      onDragStart={()=>setDragTask(task)}
+                      onDragEnd={()=>{setDragTask(null);setDragOver(null);setDragOverTask(null);}}
+                      catColor={catColor[task._cat]} catIcon={catIcon[task._cat]} catLabel={catLabel[task._cat]}
+                      currentUserId={currentUserId}/>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
         </div>
 
         {/* 完了ゾーン */}
@@ -5254,26 +5288,6 @@ function AppInner() {
             );
           })}
 
-          {currentUser && (()=>{
-            const my = [...allPrepTasks.filter(t=>t.date===todayStr&&t.assignedTo===currentUserId&&!t.completedAt),...cleanTasks.filter(t=>t.assignedTo===currentUserId&&!t.completedAt)];
-            return (
-              <div style={{margin:"14px 8px 0",background:"#0c0c18",borderRadius:10,border:"1px solid #1e1e2e",padding:12}}>
-                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
-                  <Av u={currentUser} size={20}/>
-                  <span style={{fontSize:11,color:"#aaa",fontWeight:700}}>{(currentUser?.name||"").split(" ")[0]}のタスク</span>
-                </div>
-                {my.length===0
-                  ? <div style={{fontSize:11,color:"#6b7280"}}>全完了 🎉</div>
-                  : my.map(t=>(
-                    <div key={t.id} style={{padding:"4px 0",borderBottom:"1px solid #14141f"}}>
-                      <div style={{fontSize:11,color:"#ccc"}}>{t.name}</div>
-                      <div style={{fontSize:10,color:"#E85D04"}}>〆{t.deadline}</div>
-                    </div>
-                  ))
-                }
-              </div>
-            );
-          })()}
 
           {/* ── タスクパレット ── */}
           {view==="top" && (()=>{
@@ -5376,7 +5390,7 @@ function AppInner() {
 
         {/* Main content */}
         <div style={{flex:1,padding:"24px 28px",overflowY:"auto"}}>
-          {view==="top"       && <TopView allPrepTasks={allPrepTasks} setAllPrepTasks={setAllPrepTasks} cleanTasks={cleanTasks} setCleanTasks={setCleanTasks} inventory={inventory} setInventory={setInventory} recipes={recipes} currentUserId={currentUserId} notify={notify} storeFilter={storeFilter} paletteDrag={paletteDrag} setPaletteDrag={setPaletteDrag} extDragTask={topDragTask} setExtDragTask={setTopDragTask} extDragOver={topDragOver} setExtDragOver={setTopDragOver} onDayChange={setTopActiveDay} onStoreChange={setTopActiveStore}/>}
+          {view==="top"       && <TopView allPrepTasks={allPrepTasks} setAllPrepTasks={setAllPrepTasks} cleanTasks={cleanTasks} setCleanTasks={setCleanTasks} inventory={inventory} setInventory={setInventory} recipes={recipes} currentUserId={currentUserId} notify={notify} storeFilter={storeFilter} routines={routines} paletteDrag={paletteDrag} setPaletteDrag={setPaletteDrag} extDragTask={topDragTask} setExtDragTask={setTopDragTask} extDragOver={topDragOver} setExtDragOver={setTopDragOver} onDayChange={setTopActiveDay} onStoreChange={setTopActiveStore}/>}
           {view==="dashboard" && <Dashboard allPrepTasks={allPrepTasks} cleanTasks={cleanTasks} hqTasks={hqTasks} currentUserId={currentUserId} inventory={inventory} orders={orders} storeFilter={storeFilter}/>}
           {view==="prep"      && <PrepView allTasks={allPrepTasks} setAllTasks={setAllPrepTasks} currentUserId={currentUserId} recipes={recipes} notify={notify} setInventory={setInventory} storeFilter={storeFilter}/>}
           {view==="clean"     && <CleanView tasks={cleanTasks} setTasks={setCleanTasks} currentUserId={currentUserId} notify={notify} storeFilter={storeFilter}/>}
