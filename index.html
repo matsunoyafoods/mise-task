@@ -2338,14 +2338,36 @@ function PrepView({allTasks, setAllTasks, currentUserId, recipes, notify, setInv
 function CleanView({tasks, setTasks, currentUserId, notify, storeFilter}) {
   const [activeStore, setActiveStore] = useState(storeFilter || 1);
   const [staffPickClean, setStaffPickClean] = useState(null); // {task}
+  const [showAdd, setShowAdd] = useState(false);
+  const [addName, setAddName] = useState("");
+  const [addArea, setAddArea] = useState("");
+  const [addDeadline, setAddDeadline] = useState("12:00");
   const filtered = tasks.filter(t=>t.store===activeStore);
   const complete = (task, staffIds) => {
     setTasks(p=>p.map(t=>t.id===task.id?{...t,completedAt:nowTime(),completedBy:staffIds}:t));
     setStaffPickClean(null);
     notify("✓ クリーン完了！ポイント獲得！（"+staffIds.length+"名で分担）");
   };
+  const addClean = () => {
+    if (!addName.trim()) { notify("タスク名を入力してください","warn"); return; }
+    setTasks(p=>[...p,{id:"ct"+Date.now(),name:addName.trim(),area:addArea.trim()||"その他",deadline:addDeadline,store:activeStore,assignedTo:null,completedAt:null,completedBy:null,points:2}]);
+    setAddName(""); setAddArea(""); setAddDeadline("12:00"); setShowAdd(false);
+    notify("✓ クリーンタスクを追加しました");
+  };
   return (
     <div>
+      {showAdd && (
+        <Modal onClose={()=>setShowAdd(false)} width={380}>
+          <div style={{fontSize:17,fontWeight:800,color:"#fff",marginBottom:16}}>✦ クリーンタスクを追加</div>
+          <Input label="タスク名 *" value={addName} onChange={e=>setAddName(e.target.value)} placeholder="例: 冷蔵庫の清掃"/>
+          <Input label="エリア（任意）" value={addArea} onChange={e=>setAddArea(e.target.value)} placeholder="例: キッチン"/>
+          <Input label="締切時刻" type="time" value={addDeadline} onChange={e=>setAddDeadline(e.target.value)}/>
+          <div style={{display:"flex",gap:10,marginTop:8}}>
+            <Btn onClick={()=>setShowAdd(false)} color="#1a1a2e" style={{color:"#8b95a1",flex:1}}>キャンセル</Btn>
+            <Btn onClick={addClean} color="#C9184A" style={{flex:1}}>追加する</Btn>
+          </div>
+        </Modal>
+      )}
       {staffPickClean && (
         <StaffMultiPickModal
           title={"✦ 担当者を選択（複数可）"}
@@ -2361,16 +2383,17 @@ function CleanView({tasks, setTasks, currentUserId, notify, storeFilter}) {
           <h2 style={{fontSize:22,fontWeight:800,color:"#fff",marginBottom:3}}>クリーン管理</h2>
           <p style={{fontSize:12,color:"#8b95a1"}}>清掃完了は評価ポイントに直結します</p>
         </div>
-        {!storeFilter && currentUserId !== null && (
-          <div style={{display:"flex",gap:6}}>
-            {INITIAL_STORES.map(s=>(
-              <button key={s.id} onClick={()=>setActiveStore(s.id)}
-                style={{padding:"7px 16px",borderRadius:20,border:"none",cursor:"pointer",fontSize:12,background:activeStore===s.id?"#C9184A":"#1a1a2a",color:activeStore===s.id?"#fff":"#8b95a1"}}>
-                {s.name}
-              </button>
-            ))}
-          </div>
-        )}
+        <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+          {!storeFilter && currentUserId !== null && INITIAL_STORES.map(s=>(
+            <button key={s.id} onClick={()=>setActiveStore(s.id)}
+              style={{padding:"7px 16px",borderRadius:20,border:"none",cursor:"pointer",fontSize:12,background:activeStore===s.id?"#C9184A":"#1a1a2a",color:activeStore===s.id?"#fff":"#8b95a1"}}>
+              {s.name}
+            </button>
+          ))}
+          {currentUserId !== null && (
+            <Btn onClick={()=>setShowAdd(true)} color="#C9184A">＋ タスクを追加</Btn>
+          )}
+        </div>
       </div>
       {filtered.map(task => {
         const done = !!task.completedAt;
@@ -3228,7 +3251,7 @@ function TaskManagerView({routines, setRoutines, allPrepTasks, setAllPrepTasks, 
           <Input label="タスク名 *" value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))} placeholder="例: 醤油ダレ仕込み"/>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
             <Select label="カテゴリー" value={form.category} onChange={e=>setForm(p=>({...p,category:e.target.value}))}
-              options={taskCats.map(c=>({value:c.id,label:c.icon+" "+c.label}))}/>
+              options={[{value:"prep",label:"🔪 仕込み"},{value:"clean",label:"✦ クリーン"},...taskCats.filter(c=>c.id!=="prep"&&c.id!=="clean").map(c=>({value:c.id,label:(c.icon||"📋")+" "+c.label}))]}/>
             <Select label="店舗" value={String(form.store)} onChange={e=>setForm(p=>({...p,store:Number(e.target.value)}))}
               options={INITIAL_STORES.map(s=>({value:String(s.id),label:s.name}))}/>
           </div>
