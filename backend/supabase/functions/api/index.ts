@@ -150,6 +150,63 @@ async function supplierRegister(req: Request): Promise<Response> {
   return err("invalid_token", "無効なトークンです", 404);
 }
 
+// ── 業者: 値上げ表アップロード → AIで単価更新（公開・トークン制） ────────────
+function extractJson(text: string): any {
+  let s = String(text||"").replace(/```json/gi,"").replace(/```/g,"").trim();
+  const a = s.indexOf("{"), b = s.lastIndexOf("}");
+  if (a>=0 && b>a) s = s.slice(a, b+1);
+  return JSON.parse(s);
+}
+async function supplierPriceUpdate(req: Request): Promise<Response> {
+  const bd = await body(req);
+  if (!bd.token || !bd.image) return err("invalid_input", "token と画像/PDFが必要です");
+  // トークンから業者・テナントを特定
+  const { data: rows } = await admin().from("app_state").select("tenant_id, data").eq("resource", "suppliers");
+  let tenantId: string | null = null; let supplier: any = null;
+  for (const row of rows ?? []) {
+    const s = ((row as any).data ?? []).find((x: any) => x.token === bd.token);
+    if (s) { tenantId = (row as any).tenant_id; supplier = s; break; }
+  }
+  if (!tenantId || !supplier) return err("invalid_token", "無効なトークンです", 404);
+  // AIで単価表を読み取り（サーバー側でGemini/Claude）
+  const isImg = String(bd.mediaType||"").startsWith("image/");
+  const messages = [{ role:"user", content:[
+    { type: isImg ? "image" : "document", source:{ media_type: bd.mediaType || "application/pdf", data: bd.image }},
+    { type:"text", text:"この単価表（請求書）から商品名と単価を抽出。同じ商品は1つにまとめる。数量や合計は不要。JSONのみ。" },
+  ]}];
+  const sys = "仕入れ単価表 読み取りAI。商品名と単価(数値)のみ抽出。JSON形式のみ: {\"items\":[{\"name\":\"商品名\",\"unitPrice\":数値}]}";
+  const aiRes = await runAI(sys, messages);
+  if (!aiRes.ok && aiRes.status !== 200) {
+    const e = await aiRes.json().catch(()=>({}));
+    return json({ error: { code:"ai_failed", message:"AI解析に失敗しました", detail:e } }, 502);
+  }
+  const aiData = await aiRes.json();
+  let parsed: any;
+  try { parsed = extractJson((aiData.content||[]).map((c:any)=>c.text||"").join("")); }
+  catch { return err("parse_failed", "単価表を読み取れませんでした", 422); }
+  const items = (parsed.items || (Array.isArray(parsed) ? parsed : [])).filter((x:any)=>x && x.name);
+  // 在庫の単価を更新（名前一致。値が変わったものだけ）
+  const inv = ((await getState(tenantId, "inventory")) ?? []) as any[];
+  const changes: any[] = [];
+  const newInv = inv.map((it:any) => {
+    const m = items.find((x:any)=> String(x.name).trim() === String(it.name).trim());
+    const np = m ? Number(m.unitPrice) : NaN;
+    if (m && np > 0 && np !== Number(it.unitPrice)) {
+      changes.push({ name: it.name, old: Number(it.unitPrice)||0, new: np });
+      return { ...it, unitPrice: np };
+    }
+    return it;
+  });
+  if (changes.length) {
+    await setState(tenantId, "inventory", newInv);
+    const ph = ((await getState(tenantId, "priceHistory")) ?? []) as any[];
+    const now = new Date().toISOString().slice(0,10);
+    const add = changes.map((c,i)=>({ id:"ph"+Date.now()+"_"+i, supplierId: supplier.id, supplierName: supplier.name, itemName:c.name, oldPrice:c.old, newPrice:c.new, changedAt: now, notifiedHonbu:false, source:"業者アップロード" }));
+    await setState(tenantId, "priceHistory", [...ph, ...add]);
+  }
+  return json({ ok:true, supplier: supplier.name, readCount: items.length, changed: changes.map(c=>({ itemName:c.name, oldPrice:c.old, newPrice:c.new })) });
+}
+
 // ── bootstrap / state ────────────────────────────────────────────────────────
 async function bootstrap(c: AppClaims): Promise<Response> {
   const st = await getAllState(c.tenant_id);
@@ -287,6 +344,7 @@ Deno.serve(async (req) => {
       return err("not_found", "未対応の認証エンドポイント", 404);
     }
     if (m === "POST" && p[0] === "suppliers" && p[1] === "register") return await supplierRegister(req);
+    if (m === "POST" && p[0] === "suppliers" && p[1] === "price-update") return await supplierPriceUpdate(req);
 
     const claims = await getClaims(req);
     if (!claims) return err("unauthorized", "トークンが無効です", 401);

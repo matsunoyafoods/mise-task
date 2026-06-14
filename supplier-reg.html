@@ -27,7 +27,7 @@
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const { useState, useEffect } = React;
+const { useState, useEffect, useRef } = React;
 
 // ═══════════════════════════════════════════════════════════════════════
 // ██  CONFIG — エンジニア向け設定（index.html の CONFIG と同じURLを設定）
@@ -59,11 +59,21 @@ const api = {
     getByToken: (token) => api._fetch(`/suppliers/by-token/${token}`),
     // 業者セルフ登録を完了 → {success: true}
     register: (token, data) => api._fetch(`/suppliers/register`, { method: "POST", body: JSON.stringify({ token, ...data }) }),
+    // 値上げ表（画像/PDF）をアップロード → AIが単価更新 → {ok, changed:[...]}
+    priceUpdate: (token, image, mediaType) => api._fetch(`/suppliers/price-update`, { method: "POST", body: JSON.stringify({ token, image, mediaType }) }),
   },
 };
 
 // URLパラメータからtokenを取得
 const getToken = () => new URLSearchParams(window.location.search).get("token");
+
+// ファイル → base64
+const fileToBase64 = (file) => new Promise((resolve, reject) => {
+  const r = new FileReader();
+  r.onload = () => resolve(r.result.split(",")[1]);
+  r.onerror = reject;
+  r.readAsDataURL(file);
+});
 
 const METHODS = {
   email: {
@@ -157,6 +167,23 @@ function SupplierRegPage() {
     }
   }, [token, supplierLoaded]);
 
+  // 値上げ表アップロード
+  const [priceFile, setPriceFile] = useState(null);
+  const [priceLoading, setPriceLoading] = useState(false);
+  const [priceResult, setPriceResult] = useState(null);
+  const [priceErr, setPriceErr] = useState("");
+  const priceFileRef = useRef();
+  const uploadPriceList = async () => {
+    if (!priceFile || !token) return;
+    setPriceLoading(true); setPriceErr(""); setPriceResult(null);
+    try {
+      const b64 = await fileToBase64(priceFile);
+      const res = await api.suppliers.priceUpdate(token, b64, priceFile.type);
+      setPriceResult(res);
+    } catch (e) { setPriceErr("読み取りに失敗しました。もう一度お試しください。"); }
+    setPriceLoading(false);
+  };
+
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const toggleMethod = m => setForm(p => ({
     ...p,
@@ -243,6 +270,56 @@ function SupplierRegPage() {
           </div>
         </div>
       </div>
+
+      {/* 値上げ表アップロード */}
+      {supplierLoaded && (
+      <div style={{ width: "100%", maxWidth: 480, background: "#0c0c18", border: "1px solid #1e1e2e", borderRadius: 20, padding: "24px 24px", marginBottom: 16 }}>
+        <div style={{ fontSize: 16, fontWeight: 800, color: "#fff", marginBottom: 4 }}>価格表のアップロード</div>
+        <div style={{ fontSize: 12, color: "#8b95a1", marginBottom: 16, lineHeight: 1.6 }}>
+          値上げ・価格改定の表（画像 / PDF）を送るだけで、登録済み商品の単価を自動で更新します。担当者の手入力は不要です。
+        </div>
+
+        <input ref={priceFileRef} type="file" accept="image/*,application/pdf" style={{ display: "none" }}
+          onChange={e => { setPriceFile(e.target.files[0] || null); setPriceResult(null); setPriceErr(""); }} />
+
+        <button onClick={() => priceFileRef.current && priceFileRef.current.click()}
+          style={{ width: "100%", padding: "14px", borderRadius: 12, border: "1px dashed #3a3a52", background: "#11111f", color: "#c7d0db", fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 12 }}>
+          {priceFile ? `📄 ${priceFile.name}` : "＋ ファイルを選択（画像 / PDF）"}
+        </button>
+
+        {priceFile && (
+          <button onClick={uploadPriceList} disabled={priceLoading}
+            style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", background: priceLoading ? "#3a3a52" : "linear-gradient(135deg,#6D28D9,#E85D04)", color: "#fff", fontSize: 14, fontWeight: 800, cursor: priceLoading ? "default" : "pointer" }}>
+            {priceLoading ? "AIが読み取り中…" : "送信して単価を更新"}
+          </button>
+        )}
+
+        {priceErr && <div style={{ marginTop: 12, fontSize: 12, color: "#f87171" }}>{priceErr}</div>}
+
+        {priceResult && (
+          <div style={{ marginTop: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#34d399", marginBottom: 8 }}>
+              ✓ 完了：{priceResult.readCount || 0}件読み取り / {(priceResult.changed || []).length}件更新
+            </div>
+            {(priceResult.changed || []).length === 0 ? (
+              <div style={{ fontSize: 12, color: "#8b95a1" }}>変更のある単価はありませんでした。</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {priceResult.changed.map((c, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#11111f", border: "1px solid #1e1e2e", borderRadius: 8, padding: "8px 12px" }}>
+                    <span style={{ fontSize: 12, color: "#e5e7eb", fontWeight: 700 }}>{c.itemName}</span>
+                    <span style={{ fontSize: 12, color: "#8b95a1" }}>
+                      ¥{c.oldPrice} → <span style={{ color: c.newPrice > c.oldPrice ? "#f87171" : "#34d399", fontWeight: 800 }}>¥{c.newPrice}</span>
+                    </span>
+                  </div>
+                ))}
+                <div style={{ fontSize: 11, color: "#6b7280", marginTop: 4 }}>本部に通知しました。</div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      )}
 
       {/* メインカード */}
       <div style={{ width: "100%", maxWidth: 480, background: "#0c0c18", border: "1px solid #1e1e2e", borderRadius: 20, padding: "28px 24px" }}>
