@@ -2170,10 +2170,10 @@ function AIInputView({ recipes, setRecipes, inventory, setInventory, suppliers, 
   const [tab, setTab] = useState("recipe");
   return (
     <div style={{padding:"16px",maxWidth:800,margin:"0 auto"}}>
-      <h2 style={{color:"#fff",fontSize:18,fontWeight:800,marginBottom:4}}>🤖 AI自動入力</h2>
+      <h2 style={{color:"#fff",fontSize:18,fontWeight:800,marginBottom:4}}>AI自動入力</h2>
       <p style={{color:"#6b7280",fontSize:12,marginBottom:16}}>PDF・写真を添付するだけで、レシピや仕入れ商品を自動登録できます</p>
       <div style={{display:"flex",gap:4,background:"#0d1117",borderRadius:10,padding:4,marginBottom:16,border:"1px solid #1f2937"}}>
-        {[["recipe","📋 レシピ追加"],["supplier","🚚 仕入れ商品"]].map(([id,lbl])=>(
+        {[["recipe","レシピ追加"],["supplier","仕入れ商品"]].map(([id,lbl])=>(
           <button key={id} onClick={()=>setTab(id)} style={{flex:1,padding:9,border:"none",borderRadius:7,cursor:"pointer",fontSize:12,fontWeight:600,background:tab===id?"#E85D04":"transparent",color:tab===id?"#fff":"#6b7280"}}>
             {lbl}
           </button>
@@ -2185,7 +2185,7 @@ function AIInputView({ recipes, setRecipes, inventory, setInventory, suppliers, 
           : <SupplierAIPanel inventory={inventory} setInventory={setInventory} suppliers={suppliers} notify={notify}/>}
       </div>
       <div style={{background:"#0d1117",border:"1px solid #1f2937",borderRadius:10,padding:14}}>
-        <div style={{color:"#6b7280",fontSize:11,marginBottom:8,fontWeight:700}}>📊 現在の登録状況</div>
+        <div style={{color:"#6b7280",fontSize:11,marginBottom:8,fontWeight:700}}>現在の登録状況</div>
         <div style={{display:"flex",gap:10}}>
           <div style={{flex:1,background:"rgba(232,93,4,0.1)",border:"1px solid rgba(232,93,4,0.2)",borderRadius:8,padding:"8px 12px"}}>
             <div style={{fontSize:20,fontWeight:800,color:"#E85D04"}}>{recipes.length}</div>
@@ -5460,7 +5460,7 @@ function AppInner() {
               <button key={t.id} onClick={()=>{setView(t.id); if(window.innerWidth<900)setSideOpen(false);}}
                 style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:t.id==="ai_support"?"10px 18px 10px 15px":"10px 18px",background:t.id==="ai_support"?(view===t.id?"#1a0a00":"rgba(232,93,4,.08)"):view===t.id?"#12121f":"transparent",border:"none",cursor:"pointer",color:t.id==="ai_support"?(view===t.id?"#FAA307":"#E85D04"):(view===t.id?"#fff":"#7c8794"),borderLeft:`3px solid ${t.id==="ai_support"?(view===t.id?"#FAA307":"#E85D0488"):view===t.id?"#E85D04":"transparent"}`,fontSize:12,textAlign:"left",marginTop:t.id==="ai_support"?"auto":"0"}}>
                 <span style={{display:"flex",alignItems:"center",gap:8}}>
-                  <span style={{fontSize:14}}>{t.icon}</span>{t.label}
+                  {t.label}
                 </span>
                 {badge != null && <span style={{background:"#ef4444",color:"#fff",fontSize:9,fontWeight:700,borderRadius:10,padding:"1px 6px"}}>{badge}</span>}
               </button>
