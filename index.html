@@ -2178,6 +2178,21 @@ function PrepView({allTasks, setAllTasks, currentUserId, recipes, notify, setInv
   const [verifyTask, setVerifyTask] = useState(null);
   const [showRecipe, setShowRecipe] = useState(null);
   const [staffPickPrep, setStaffPickPrep] = useState(null); // {task} 完了前スタッフ選択
+  const [showAdd, setShowAdd] = useState(false);
+  const [addName, setAddName] = useState("");
+  const [addRecipeId, setAddRecipeId] = useState("");
+  const [addDeadline, setAddDeadline] = useState("10:00");
+  const addPrep = () => {
+    if (!addName.trim()) { notify("タスク名を入力してください","warn"); return; }
+    setAllTasks(p=>[...p,{
+      id:"pt"+Date.now(), name:addName.trim(), recipeId:addRecipeId||null,
+      deadline:addDeadline, store:activeStore, assignedTo:null,
+      date:dateStr(0), completedAt:null, completedBy:null, amountVerified:false, amountLog:[]
+    }]);
+    setAddName(""); setAddRecipeId(""); setAddDeadline("10:00"); setShowAdd(false);
+    setHistoryDays(0);
+    notify("✓ 仕込みタスクを追加しました");
+  };
 
   const viewDate = dateStr(historyDays);
   const isToday = historyDays === 0;
@@ -2242,21 +2257,38 @@ function PrepView({allTasks, setAllTasks, currentUserId, recipes, notify, setInv
         </Modal>
       )}
 
+      {showAdd && (
+        <Modal onClose={()=>setShowAdd(false)} width={400}>
+          <div style={{fontSize:17,fontWeight:800,color:"#fff",marginBottom:16}}>🔪 仕込みタスクを追加</div>
+          <Select label="レシピから選ぶ（任意）" value={addRecipeId}
+            onChange={e=>{const id=e.target.value;const r=recipes.find(x=>x.id===id);setAddRecipeId(id);if(r)setAddName(r.name);}}
+            options={[{value:"",label:"-- レシピなし --"},...recipes.map(r=>({value:r.id,label:r.name}))]}/>
+          <Input label="タスク名 *" value={addName} onChange={e=>setAddName(e.target.value)} placeholder="例: 醤油ダレ仕込み"/>
+          <Input label="締切時刻" type="time" value={addDeadline} onChange={e=>setAddDeadline(e.target.value)}/>
+          <div style={{fontSize:11,color:"#6b7280",marginBottom:8}}>※「今日」のタスクとして追加されます</div>
+          <div style={{display:"flex",gap:10}}>
+            <Btn onClick={()=>setShowAdd(false)} color="#1a1a2e" style={{color:"#8b95a1",flex:1}}>キャンセル</Btn>
+            <Btn onClick={addPrep} color="#E85D04" style={{flex:1}}>追加する</Btn>
+          </div>
+        </Modal>
+      )}
+
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:10}}>
         <div>
           <h2 style={{fontSize:22,fontWeight:800,color:"#fff",marginBottom:3}}>仕込み管理</h2>
           <p style={{fontSize:12,color:"#8b95a1"}}>担当割当・分量チェック・1週間履歴</p>
         </div>
-        {!storeFilter && currentUserId !== null && (
-          <div style={{display:"flex",gap:6}}>
-            {INITIAL_STORES.map(s=>(
-              <button key={s.id} onClick={()=>setActiveStore(s.id)}
-                style={{padding:"7px 16px",borderRadius:20,border:"none",cursor:"pointer",fontSize:12,background:activeStore===s.id?"#E85D04":"#1a1a2a",color:activeStore===s.id?"#fff":"#8b95a1"}}>
-                {s.name}
-              </button>
-            ))}
-          </div>
-        )}
+        <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+          {!storeFilter && currentUserId !== null && INITIAL_STORES.map(s=>(
+            <button key={s.id} onClick={()=>setActiveStore(s.id)}
+              style={{padding:"7px 16px",borderRadius:20,border:"none",cursor:"pointer",fontSize:12,background:activeStore===s.id?"#E85D04":"#1a1a2a",color:activeStore===s.id?"#fff":"#8b95a1"}}>
+              {s.name}
+            </button>
+          ))}
+          {currentUserId !== null && (
+            <Btn onClick={()=>setShowAdd(true)} color="#E85D04">＋ タスクを追加</Btn>
+          )}
+        </div>
       </div>
 
       <div style={{display:"flex",gap:5,marginBottom:20,overflowX:"auto",paddingBottom:4}}>
