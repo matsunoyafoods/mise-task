@@ -376,10 +376,10 @@ const Modal = ({children,onClose,width=480}) => (
     </div>
   </div>
 );
-const Input = ({label,value,onChange,type="text",placeholder,style={}}) => (
+const Input = ({label,value,onChange,type="text",placeholder,style={},inputMode}) => (
   <div style={{marginBottom:14}}>
     {label&&<div style={{fontSize:11,color:"#8b95a1",marginBottom:5}}>{label}</div>}
-    <input type={type} value={value} onChange={onChange} placeholder={placeholder}
+    <input type={type} inputMode={inputMode || (type==="number" ? "decimal" : undefined)} value={value} onChange={onChange} placeholder={placeholder}
       style={{width:"100%",padding:"9px 12px",background:"#0c0c18",border:"1px solid #2a2a3a",color:"#eee",borderRadius:8,fontSize:13,...style}}/>
   </div>
 );
@@ -446,7 +446,7 @@ function NormalConfirmModal({item, onNormal, onAbnormal, onClose}) {
         <div style={{fontSize:12,color:"#f87171",marginBottom:16}}>⚠️ 実際の数値を入力してください</div>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
           <input
-            type="number" autoFocus placeholder={item.unit}
+            type="number" inputMode="decimal" autoFocus placeholder={item.unit}
             value={inputVal} onChange={e=>setInputVal(e.target.value)}
             style={{flex:1,padding:"14px",background:"#0a0a16",border:"1px solid "+(isOut?"#ef4444":"#2a2a3a"),color:"#fff",borderRadius:10,fontSize:26,textAlign:"center",outline:"none"}}
           />
@@ -597,7 +597,7 @@ function AmountVerifyModal({task, recipe, onConfirm, onCancel}) {
               <span style={{fontSize:12,color:"#E85D04"}}>規定: {ing.amount}{ing.unit}</span>
             </div>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <input type="number" placeholder="実際の使用量" value={inputs[ing.name]}
+              <input type="number" inputMode="decimal" placeholder="実際の使用量" value={inputs[ing.name]}
                 onChange={e=>setInputs(p=>({...p,[ing.name]:e.target.value}))}
                 style={{flex:1,padding:"9px",background:ing.warn?"#1a0808":ing.ok?"#051a0a":"#0c0c18",border:"1px solid "+(ing.warn?"#9a3412":ing.ok?"#14532d":"#2a2a3a"),color:"#eee",borderRadius:8,fontSize:13}}/>
               <span style={{fontSize:11,color:"#8b95a1"}}>{ing.unit}</span>
@@ -636,7 +636,7 @@ function InspectionModal({order, suppliers, onComplete, onClose}) {
             <span style={{fontSize:12,color:"#E85D04"}}>発注: {l.ordered.toLocaleString()}{l.unit}</span>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <input type="number" value={l.received} onChange={e=>update(idx,e.target.value)}
+            <input type="number" inputMode="decimal" value={l.received} onChange={e=>update(idx,e.target.value)}
               style={{flex:1,padding:"9px",background:l.ok?"#051a0a":"#1a0808",border:`1px solid ${l.ok?"#14532d":"#9a3412"}`,color:"#eee",borderRadius:8,fontSize:13}}/>
             <span style={{fontSize:11,color:"#8b95a1"}}>{l.unit}</span>
             {l.received > 0 && <Chip label={l.ok?"✓ OK":`差異: ${l.received-l.ordered}`} color={l.ok?"#4ade80":"#f87171"} bg={l.ok?"#052e16":"#1a0808"}/>}
@@ -2773,7 +2773,7 @@ function OrderView({inventory, setInventory, suppliers, setSuppliers, orders, se
                         </div>
                         <div style={{display:"flex",alignItems:"center",gap:8}}>
                           <span style={{fontSize:11,color:"#8b95a1"}}>発注数量:</span>
-                          <input type="number" value={qty}
+                          <input type="number" inputMode="numeric" pattern="[0-9]*" value={qty}
                             onChange={e=>setEditQty(p=>({...p,[item.id]:Number(e.target.value)}))}
                             style={{width:90,padding:"5px 8px",background:"#0a0a16",border:"1px solid #2a2a3a",color:"#eee",borderRadius:6,fontSize:12,textAlign:"right"}}/>
                           <span style={{fontSize:11,color:"#8b95a1"}}>{item.unit}</span>
