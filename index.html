@@ -235,7 +235,7 @@ const nowTime = () => new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minu
 const ROLES = { HONBU:"本部", TENCHO:"店長", STAFF:"スタッフ" };
 const DEFAULT_ADMIN_PASSWORD = "1234";
 const DEFAULT_TASK_CATS = [];
-const DEFAULT_POINT_CONFIG = { prepDone:10, amountVerified:8, cleanMult:2, deviation:-5 };
+const DEFAULT_POINT_CONFIG = { prepDone:10, amountVerified:8, cleanDone:10, deviation:-5 };
 
 // ═══════════════════════════════════════════════════════════════════════
 // ██  DEMO DATA — API未接続時のデモ用データ（本番ではDBから取得）
@@ -2916,7 +2916,7 @@ function CommissionView({allPrepTasks, cleanTasks, pointConfig, setPointConfig, 
   const calcPts = uid => {
     let pts = 0;
     allPrepTasks.forEach(t=>{if(isBy(t,uid)){pts+=Number(PC.prepDone)||0;if(t.amountVerified)pts+=Number(PC.amountVerified)||0;if(t.amountLog?.some(l=>!l.ok))pts+=Number(PC.deviation)||0;}});
-    cleanTasks.forEach(t=>{if(isBy(t,uid))pts+=(Number(t.points)||0)*(Number(PC.cleanMult)||1);});
+    cleanTasks.forEach(t=>{if(isBy(t,uid))pts+=Number(PC.cleanDone)||0;});
     return Math.max(0,pts);
   };
   const setPC = (k,v)=> setPointConfig && setPointConfig({...PC,[k]:v===""?"":Number(v)});
@@ -2934,7 +2934,7 @@ function CommissionView({allPrepTasks, cleanTasks, pointConfig, setPointConfig, 
           {isHonbu ? <span style={{fontSize:10,color:"#E85D04"}}>本部のみ編集可</span> : <span style={{fontSize:10,color:"#6b7280"}}>本部のみ編集できます</span>}
         </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}}>
-          {[{k:"prepDone",l:"仕込み完了",suf:"pt",c:"#E85D04"},{k:"amountVerified",l:"分量確認済み",suf:"pt",c:"#2D9D78"},{k:"cleanMult",l:"クリーン完了（倍率）",suf:"×",c:"#C9184A"},{k:"deviation",l:"差異あり(5%超)",suf:"pt",c:"#f87171"}].map(r=>(
+          {[{k:"prepDone",l:"仕込み完了",suf:"pt",c:"#E85D04"},{k:"amountVerified",l:"分量確認済み",suf:"pt",c:"#2D9D78"},{k:"cleanDone",l:"クリーン完了",suf:"pt",c:"#C9184A"},{k:"deviation",l:"差異あり(5%超)",suf:"pt",c:"#f87171"}].map(r=>(
             <div key={r.k} style={{background:"#1a1a2a",borderRadius:8,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
               <span style={{fontSize:11,color:"#9ca3af"}}>{r.l}</span>
               {isHonbu ? (
