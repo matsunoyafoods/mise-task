@@ -315,9 +315,19 @@ async function callAI(messages, systemPrompt) {
   });
   if (!res.ok) throw new Error("AI API Error: " + res.status);
   const data = await res.json();
-  // サーバー側で Claude API を呼び出し、レスポンスをそのまま返す想定
-  const text = (data.content || []).map(c => c.text || "").join("");
-  return JSON.parse(text.replace(/^```[\w]*\n?/mg, "").replace(/^```$/mg, "").trim());
+  // サーバー側で AI を呼び出し、{content:[{text}]} を返す想定
+  let text = (data.content || []).map(c => c.text || "").join("");
+  // コードフェンス除去 → JSON本体（最初の { or [ から対応する閉じまで）を抽出
+  text = text.replace(/```json/gi, "").replace(/```/g, "").trim();
+  const firstObj = text.indexOf("{"), firstArr = text.indexOf("[");
+  let start = -1;
+  if (firstObj >= 0 && firstArr >= 0) start = Math.min(firstObj, firstArr);
+  else start = Math.max(firstObj, firstArr);
+  if (start > 0) text = text.slice(start);
+  const lastObj = text.lastIndexOf("}"), lastArr = text.lastIndexOf("]");
+  const end = Math.max(lastObj, lastArr);
+  if (end >= 0) text = text.slice(0, end + 1);
+  return JSON.parse(text);
 }
 
 DEMO_DATA.RECIPES = [];

@@ -211,7 +211,7 @@ async function callClaude(system: unknown, messages: Msg[]): Promise<Response> {
   const r = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
-    body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 8192, system, messages }),
+    body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 16384, system, messages }),
   });
   const data = await r.json();
   return json(data, r.ok ? 200 : r.status); // 既に {content:[{text}]} 形式
@@ -230,7 +230,7 @@ async function callGemini(system: unknown, messages: Msg[]): Promise<Response> {
       return { text: b.text ?? "" };
     }),
   }));
-  const reqBody: Record<string, unknown> = { contents, generationConfig: { maxOutputTokens: 8192 } };
+  const reqBody: Record<string, unknown> = { contents, generationConfig: { maxOutputTokens: 16384 } };
   if (system) reqBody.systemInstruction = { parts: [{ text: String(system) }] };
 
   const r = await fetch(
