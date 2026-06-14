@@ -1359,20 +1359,27 @@ function SupplierAIPanel({ inventory, setInventory, suppliers, notify }) {
       const name = (item.name||"").trim();
       if (name) map.set(name, item);
     });
-    const uniq = [...map.entries()].map(([name,item])=>({name, item}));
+    let added=0, updated=0, skipped=0;
     const newItems = [];
-    uniq.forEach(({name,item}) => {
+    [...map.entries()].forEach(([name,item]) => {
       const existing = inventory.find(inv => inv.name === name);
+      const price = Number(item.unitPrice||0);
       if (existing) {
-        // 既存商品: 単価のみ更新（在庫数は変更しない）
-        setInventory(p => p.map(inv => inv.id===existing.id ? {...inv, unitPrice:Number(item.unitPrice)||inv.unitPrice} : inv));
+        if (price && price !== existing.unitPrice) {
+          // 既存商品で単価が変わった → 単価のみ更新（在庫数は変更しない）
+          setInventory(p => p.map(inv => inv.id===existing.id ? {...inv, unitPrice:price} : inv));
+          updated++;
+        } else {
+          skipped++; // 登録済・変更なし
+        }
       } else {
         // 新規商品マスタ（数量・合計は登録しない。在庫数は0）
-        newItems.push({ id:"inv"+Date.now()+Math.random().toString(36).slice(2,7), name, category:"その他", storageGroup:"未設定", unit:item.unit||"個", stock:0, minStock:0, orderQty:0, supplierId:result.supplierId, unitPrice:Number(item.unitPrice||0) });
+        newItems.push({ id:"inv"+Date.now()+Math.random().toString(36).slice(2,7), name, category:"その他", storageGroup:"未設定", unit:item.unit||"個", stock:0, minStock:0, orderQty:0, supplierId:result.supplierId, unitPrice:price });
+        added++;
       }
     });
     if (newItems.length) setInventory(p => [...p, ...newItems]);
-    notify("✅ "+uniq.length+"件の商品を登録しました（重複は統合）");
+    notify("✅ 新規"+added+"件・単価更新"+updated+"件"+(skipped>0?"（変更なし"+skipped+"件はスキップ）":""));
     setResult(null); setFile(null); setPreview(null);
   };
 
@@ -1413,24 +1420,49 @@ function SupplierAIPanel({ inventory, setInventory, suppliers, notify }) {
             </div>
             <div><label style={{fontSize:11,color:"#8b95a1",fontWeight:700,marginBottom:4,display:"block"}}>日付</label><input type="date" style={S.input} value={result.documentDate||""} onChange={e=>setResult({...result,documentDate:e.target.value})}/></div>
           </div>
-          <div style={{overflowX:"auto",marginBottom:8}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
-              <thead><tr>{["商品名","単位","単価",""].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
-              <tbody>
-                {(result.items||[]).map((item,i)=>(
-                  <tr key={i} style={{background:i%2===0?"#0a0a14":"transparent"}}>
-                    <td style={S.td}><input style={S.ti} value={item.name||""} onChange={e=>{const a=[...result.items];a[i]={...a[i],name:e.target.value};setResult({...result,items:a});}}/></td>
-                    <td style={S.td}><input style={{...S.ti,width:60}} value={item.unit||""} onChange={e=>{const a=[...result.items];a[i]={...a[i],unit:e.target.value};setResult({...result,items:a});}}/></td>
-                    <td style={S.td}><input style={{...S.ti,width:80}} value={item.unitPrice||""} onChange={e=>{const a=[...result.items];a[i]={...a[i],unitPrice:e.target.value};setResult({...result,items:a});}}/></td>
-                    <td style={S.td}><button style={S.del} onClick={()=>setResult({...result,items:result.items.filter((_,j)=>j!==i)})}>✕</button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {(()=>{
+            const annotated = (result.items||[]).map((item,idx)=>{
+              const name=(item.name||"").trim();
+              const existing = inventory.find(inv=>inv.name===name);
+              const price = Number(item.unitPrice||0);
+              let status="new";
+              if (existing) status = (price && price!==existing.unitPrice) ? (price>existing.unitPrice?"up":"down") : "same";
+              return {item, idx, existing, status, price};
+            });
+            const visible = annotated.filter(a=>a.status!=="same");
+            const sameCount = annotated.length - visible.length;
+            const badge = (a)=>{
+              if(a.status==="new")  return <span style={{fontSize:10,color:"#4ade80",background:"#052e16",padding:"2px 7px",borderRadius:5,whiteSpace:"nowrap"}}>新規</span>;
+              if(a.status==="up")   return <span style={{fontSize:10,color:"#f87171",background:"#1a0808",padding:"2px 7px",borderRadius:5,whiteSpace:"nowrap"}}>▲値上げ ¥{a.existing.unitPrice}→¥{a.price}</span>;
+              if(a.status==="down") return <span style={{fontSize:10,color:"#60a5fa",background:"#08101a",padding:"2px 7px",borderRadius:5,whiteSpace:"nowrap"}}>▼値下げ ¥{a.existing.unitPrice}→¥{a.price}</span>;
+              return null;
+            };
+            return (
+              <div>
+                {sameCount>0 && <div style={{fontSize:11,color:"#6b7280",marginBottom:6}}>登録済みで変更なし: {sameCount}件（非表示）</div>}
+                <div style={{overflowX:"auto",marginBottom:8}}>
+                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                    <thead><tr>{["状態","商品名","単位","単価",""].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                    <tbody>
+                      {visible.length===0 && <tr><td colSpan={5} style={{...S.td,textAlign:"center",color:"#6b7280",padding:14}}>新規・変更のある商品はありません</td></tr>}
+                      {visible.map((a,vi)=>(
+                        <tr key={a.idx} style={{background:vi%2===0?"#0a0a14":"transparent"}}>
+                          <td style={S.td}>{badge(a)}</td>
+                          <td style={S.td}><input style={S.ti} value={a.item.name||""} onChange={e=>{const arr=[...result.items];arr[a.idx]={...arr[a.idx],name:e.target.value};setResult({...result,items:arr});}}/></td>
+                          <td style={S.td}><input style={{...S.ti,width:60}} value={a.item.unit||""} onChange={e=>{const arr=[...result.items];arr[a.idx]={...arr[a.idx],unit:e.target.value};setResult({...result,items:arr});}}/></td>
+                          <td style={S.td}><input style={{...S.ti,width:80}} value={a.item.unitPrice||""} onChange={e=>{const arr=[...result.items];arr[a.idx]={...arr[a.idx],unitPrice:e.target.value};setResult({...result,items:arr});}}/></td>
+                          <td style={S.td}><button style={S.del} onClick={()=>setResult({...result,items:result.items.filter((_,j)=>j!==a.idx)})}>✕</button></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
           <button style={{background:"none",border:"1px dashed #2a2a3a",color:"#6b7280",borderRadius:6,padding:"6px",cursor:"pointer",fontSize:12,width:"100%",marginBottom:8}} onClick={()=>setResult({...result,items:[...(result.items||[]),{name:"",unit:"",unitPrice:""}]})}>＋ 商品を追加</button>
           <div style={{background:"rgba(0,119,182,0.08)",border:"1px solid #0077B644",borderRadius:6,padding:8,fontSize:11,color:"#93c5fd",marginBottom:8}}>
-            💡 同じ商品名は1つにまとめて登録。既存商品は単価を更新、新商品は在庫管理に追加（在庫数は0）。
+            💡 同じ商品は1つに統合。登録済みで単価変更なしは非表示。🟢新規＝追加 / 🔴値上げ・🔵値下げ＝単価更新（在庫数は変えません）。
           </div>
           <button onClick={save} style={{width:"100%",padding:11,background:"linear-gradient(90deg,#059669,#10b981)",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer"}}>💾 在庫管理に登録する</button>
         </div>
