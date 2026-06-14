@@ -4105,8 +4105,8 @@ function OpsView({currentUserId, storeFilter, notify, openItems, setOpenItems, c
   const [dragEditId, setDragEditId] = useState(null);
   const [dragEditOver, setDragEditOver] = useState(null);
   const ICON_OPTS = ["🔒","💡","🔥","🌡","❄","🧼","🫧","💴","📋","🪑","🚪","🧹","🍳","🪣","🏦","📦","🗝","⚡","🧊","🔍","📝","✅"];
-  const GROUP_OPTS_OPEN  = ["安全確認","温度確認","衛生確認","レジ・売上","オープン準備"];
-  const GROUP_OPTS_CLOSE = ["ホール","キッチン","温度確認","レジ・売上","安全確認"];
+  const GROUP_OPTS_OPEN  = ["キッチン","ホール","安全確認","温度確認","衛生確認","レジ・売上","オープン準備"];
+  const GROUP_OPTS_CLOSE = ["キッチン","ホール","温度確認","レジ・売上","安全確認","衛生確認"];
   const [timers, setTimers]           = useState({});  // {id: {start, elapsed, running}}
   const [tick, setTick]               = useState(0);
   useEffect(()=>{ const t=setInterval(()=>setTick(x=>x+1),1000); return()=>clearInterval(t); },[]);
