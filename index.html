@@ -2824,14 +2824,15 @@ function OrderView({inventory, setInventory, suppliers, setSuppliers, orders, se
       {tab==="suppliers" && (
         <div>
           {suppliers.map(sup=>{
-            const mc = SEND_METHOD_COLORS[sup.sendMethod];
+            const method = sup.sendMethod || sup.orderMethods?.[0] || "other";
+            const mc = SEND_METHOD_COLORS[method] || "#6b7280";
             return (
               <div key={sup.id} style={{background:"#0c0c18",border:"1px solid #1e1e2e",borderRadius:14,padding:18,marginBottom:12}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:10}}>
                   <div>
                     <div style={{fontSize:15,fontWeight:700,color:"#eee",marginBottom:6}}>{sup.name}</div>
                     <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                      <Chip label={SEND_METHOD_LABELS[sup.sendMethod]} color={mc} bg={mc+"11"}/>
+                      <Chip label={SEND_METHOD_LABELS[method]||"📝 その他"} color={mc} bg={mc+"11"}/>
                       {sup.contact && <Chip label={sup.contact} color="#8b95a1" bg="#1a1a2a"/>}
                       {sup.fax && <Chip label={`FAX: ${sup.fax}`} color="#8b95a1" bg="#1a1a2a"/>}
                       {sup.tel && <Chip label={`TEL: ${sup.tel}`} color="#8b95a1" bg="#1a1a2a"/>}
@@ -2842,10 +2843,16 @@ function OrderView({inventory, setInventory, suppliers, setSuppliers, orders, se
                       ? <span style={{fontSize:10,color:"#4ade80",background:"#052e16",padding:"3px 8px",borderRadius:20,border:"1px solid #14532d"}}>✓ 登録済み</span>
                       : <span style={{fontSize:10,color:"#fb923c",background:"#1a0e00",padding:"3px 8px",borderRadius:20,border:"1px solid #78350f"}}>未登録</span>
                     }
-                    <button onClick={()=>setShowSupplierReg(sup.token)}
-                      style={{padding:"6px 14px",background:"#1a1a3a",border:"1px solid #2a2a5a",borderRadius:8,color:"#90a0ff",fontSize:11,cursor:"pointer",whiteSpace:"nowrap"}}>
-                      {sup.selfRegistered ? "📋 登録内容を確認" : "🔗 登録フォームを開く"}
-                    </button>
+                    <div style={{display:"flex",gap:6}}>
+                      <button onClick={()=>setShowSupplierReg(sup.token)}
+                        style={{padding:"6px 14px",background:"#1a1a3a",border:"1px solid #2a2a5a",borderRadius:8,color:"#90a0ff",fontSize:11,cursor:"pointer",whiteSpace:"nowrap"}}>
+                        {sup.selfRegistered ? "📋 登録内容を確認" : "🔗 登録フォームを開く"}
+                      </button>
+                      <button onClick={()=>{ if(window.confirm(`「${sup.name}」を削除しますか？\n※発注履歴は残ります`)){ setSuppliers(p=>p.filter(s=>s.id!==sup.id)); notify("業者を削除しました","warn"); } }}
+                        style={{padding:"6px 12px",background:"rgba(239,68,68,0.12)",border:"1px solid #ef444455",borderRadius:8,color:"#f87171",fontSize:11,cursor:"pointer",whiteSpace:"nowrap"}}>
+                        🗑 削除
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -5407,6 +5414,48 @@ function AppInner() {
             );
           })}
 
+          {/* ── タスク追加カード（TOP用・仕込み/クリーン/カスタム） ── */}
+          {view==="top" && (()=>{
+            const viewStore = topActiveStore || storeFilter || 1;
+            const ritems = (routines||[]).filter(r=>r.active && r.store===viewStore);
+            const prepItems  = ritems.filter(r=>r.category==="prep").map(r=>({id:r.id,name:r.name,category:"prep",deadline:r.deadline,recipeId:r.recipeId}));
+            const cleanItems = ritems.filter(r=>r.category==="clean").map(r=>({id:r.id,name:r.name,category:"clean",deadline:r.deadline}));
+            const customItems = [{id:"_cp",name:"カスタム仕込み",category:"prep",deadline:"10:00"},{id:"_cc",name:"カスタムクリーン",category:"clean",deadline:"12:00"}];
+            const dateS = [0,1,2,3].map(i=>dateStr(-i))[topActiveDay] || dateStr(0);
+            const toggle = k => setPaletteOpen(p=>({...p,[k]:!p[k]}));
+            const addItem = (item) => {
+              if (item.category==="prep") {
+                setAllPrepTasks(p=>[...p,{id:"pt"+Date.now(),name:item.name,recipeId:item.recipeId||null,deadline:item.deadline,store:viewStore,assignedTo:null,date:dateS,completedAt:null,completedBy:null,amountVerified:false,amountLog:[]}]);
+              } else {
+                setCleanTasks(p=>[...p,{id:"ct"+Date.now(),name:item.name,area:"その他",deadline:item.deadline,store:viewStore,assignedTo:null,completedAt:null,completedBy:null,points:2}]);
+              }
+              notify("✓ 「"+item.name+"」を追加しました");
+            };
+            const Item = ({item}) => (
+              <div onClick={()=>addItem(item)} style={{display:"flex",alignItems:"center",gap:7,padding:"6px 10px",margin:"0 6px 4px",background:item.category==="prep"?"#1a0a0022":"#1a081822",border:"1px solid "+(item.category==="prep"?"#E85D0433":"#C9184A33"),borderRadius:8,cursor:"pointer",fontSize:11,color:"#a0aab4"}}>
+                <span>{item.category==="prep"?"🔪":"✦"}</span>
+                <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{item.name}</span>
+                <span style={{flexShrink:0,width:18,height:18,borderRadius:"50%",background:"#E85D04",color:"#fff",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center"}}>＋</span>
+              </div>
+            );
+            const Sec = ({skey,label,color,items}) => (
+              <div style={{marginBottom:4}}>
+                <button onClick={()=>toggle(skey)} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 10px",background:"transparent",border:"none",cursor:"pointer",color:paletteOpen[skey]?color:"#7c8794"}}>
+                  <span style={{fontSize:10,fontWeight:700}}>{label}</span>
+                  <span style={{display:"flex",gap:5,alignItems:"center"}}>{items.length>0&&<span style={{fontSize:9,background:color+"33",color,padding:"1px 5px",borderRadius:5}}>{items.length}</span>}<span style={{fontSize:10,color:"#6b7280",display:"inline-block",transform:paletteOpen[skey]?"rotate(90deg)":"none"}}>▶</span></span>
+                </button>
+                {paletteOpen[skey] && <div style={{paddingTop:2}}>{items.length===0?<div style={{fontSize:10,color:"#6b7280",padding:"4px 12px"}}>なし</div>:items.map(it=><Item key={it.id} item={it}/>)}</div>}
+              </div>
+            );
+            return (
+              <div style={{borderTop:"1px solid #14141f",marginTop:10,paddingTop:10}}>
+                <div style={{fontSize:9,color:"#6b7280",padding:"0 10px 6px",letterSpacing:".05em"}}>＋ タスクを追加（TOP）</div>
+                <Sec skey="prep"   label="🔪 仕込み"   color="#E85D04" items={prepItems}/>
+                <Sec skey="clean"  label="✦ クリーン"  color="#C9184A" items={cleanItems}/>
+                <Sec skey="custom" label="＋ カスタム" color="#0077B6" items={customItems}/>
+              </div>
+            );
+          })()}
 
         </div>
 
