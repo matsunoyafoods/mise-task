@@ -1342,7 +1342,7 @@ function SupplierAIPanel({ inventory, setInventory, suppliers, notify }) {
         { type:"text", text:"この書類から仕入れ情報を抽出してください。JSONのみ返してください。"}
       ]}];
       const supNames = suppliers.map(s=>s.name).join("、");
-      const sys = "ラーメン店舗管理システム用仕入れ読み取りAI。\n以下のJSON形式のみ返答。既知業者: "+supNames+"\n{\"supplierName\":\"業者名\",\"supplierId\":\"\",\"documentType\":\"納品書\",\"documentDate\":\"YYYY-MM-DD\",\"items\":[{\"name\":\"商品名\",\"quantity\":数値,\"unit\":\"単位\",\"unitPrice\":数値,\"totalPrice\":数値}],\"totalAmount\":数値,\"memo\":\"\"}";
+      const sys = "ラーメン店舗管理システム用 仕入れ商品読み取りAI。書類から仕入れ商品を抽出し、商品マスタとして登録する。\n重要: 同じ商品名が複数行（複数日付）ある場合は必ず1つにまとめる（重複させない）。数量や合計金額は不要。単価は最新のものを採用。\n以下のJSON形式のみ返答。既知業者: "+supNames+"\n{\"supplierName\":\"業者名\",\"supplierId\":\"\",\"documentDate\":\"YYYY-MM-DD\",\"items\":[{\"name\":\"商品名\",\"unit\":\"単位\",\"unitPrice\":数値}]}";
       const parsed = await callAI(messages, sys);
       const matched = suppliers.find(s => parsed.supplierName && parsed.supplierName.includes(s.name));
       parsed.supplierId = matched ? matched.id : "";
@@ -1353,17 +1353,26 @@ function SupplierAIPanel({ inventory, setInventory, suppliers, notify }) {
 
   const save = () => {
     if (!result?.items?.length) return;
-    const newItems = [];
+    // 商品名で重複をまとめる（同名は1つ＝最後の単価を採用）
+    const map = new Map();
     result.items.forEach(item => {
-      const existing = inventory.find(inv => inv.name === item.name);
+      const name = (item.name||"").trim();
+      if (name) map.set(name, item);
+    });
+    const uniq = [...map.entries()].map(([name,item])=>({name, item}));
+    const newItems = [];
+    uniq.forEach(({name,item}) => {
+      const existing = inventory.find(inv => inv.name === name);
       if (existing) {
-        setInventory(p => p.map(inv => inv.id===existing.id ? {...inv, stock:inv.stock+Number(item.quantity||0), unitPrice:Number(item.unitPrice)||inv.unitPrice} : inv));
+        // 既存商品: 単価のみ更新（在庫数は変更しない）
+        setInventory(p => p.map(inv => inv.id===existing.id ? {...inv, unitPrice:Number(item.unitPrice)||inv.unitPrice} : inv));
       } else {
-        newItems.push({ id:"inv"+Date.now()+Math.random(), name:item.name, category:"その他", storageGroup:"未設定", unit:item.unit||"個", stock:Number(item.quantity||0), minStock:0, orderQty:0, supplierId:result.supplierId, unitPrice:Number(item.unitPrice||0) });
+        // 新規商品マスタ（数量・合計は登録しない。在庫数は0）
+        newItems.push({ id:"inv"+Date.now()+Math.random().toString(36).slice(2,7), name, category:"その他", storageGroup:"未設定", unit:item.unit||"個", stock:0, minStock:0, orderQty:0, supplierId:result.supplierId, unitPrice:Number(item.unitPrice||0) });
       }
     });
     if (newItems.length) setInventory(p => [...p, ...newItems]);
-    notify("✅ "+result.items.length+"件の商品を在庫に登録しました");
+    notify("✅ "+uniq.length+"件の商品を登録しました（重複は統合）");
     setResult(null); setFile(null); setPreview(null);
   };
 
@@ -1403,28 +1412,25 @@ function SupplierAIPanel({ inventory, setInventory, suppliers, notify }) {
               </select>
             </div>
             <div><label style={{fontSize:11,color:"#8b95a1",fontWeight:700,marginBottom:4,display:"block"}}>日付</label><input type="date" style={S.input} value={result.documentDate||""} onChange={e=>setResult({...result,documentDate:e.target.value})}/></div>
-            <div><label style={{fontSize:11,color:"#8b95a1",fontWeight:700,marginBottom:4,display:"block"}}>合計金額</label><input style={S.input} value={result.totalAmount||""} onChange={e=>setResult({...result,totalAmount:e.target.value})}/></div>
           </div>
           <div style={{overflowX:"auto",marginBottom:8}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
-              <thead><tr>{["商品名","数量","単位","単価","合計",""].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
+              <thead><tr>{["商品名","単位","単価",""].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
               <tbody>
                 {(result.items||[]).map((item,i)=>(
                   <tr key={i} style={{background:i%2===0?"#0a0a14":"transparent"}}>
                     <td style={S.td}><input style={S.ti} value={item.name||""} onChange={e=>{const a=[...result.items];a[i]={...a[i],name:e.target.value};setResult({...result,items:a});}}/></td>
-                    <td style={S.td}><input style={{...S.ti,width:60}} value={item.quantity||""} onChange={e=>{const a=[...result.items];a[i]={...a[i],quantity:e.target.value};setResult({...result,items:a});}}/></td>
-                    <td style={S.td}><input style={{...S.ti,width:50}} value={item.unit||""} onChange={e=>{const a=[...result.items];a[i]={...a[i],unit:e.target.value};setResult({...result,items:a});}}/></td>
-                    <td style={S.td}><input style={{...S.ti,width:70}} value={item.unitPrice||""} onChange={e=>{const a=[...result.items];a[i]={...a[i],unitPrice:e.target.value};setResult({...result,items:a});}}/></td>
-                    <td style={S.td}><input style={{...S.ti,width:70}} value={item.totalPrice||""} onChange={e=>{const a=[...result.items];a[i]={...a[i],totalPrice:e.target.value};setResult({...result,items:a});}}/></td>
+                    <td style={S.td}><input style={{...S.ti,width:60}} value={item.unit||""} onChange={e=>{const a=[...result.items];a[i]={...a[i],unit:e.target.value};setResult({...result,items:a});}}/></td>
+                    <td style={S.td}><input style={{...S.ti,width:80}} value={item.unitPrice||""} onChange={e=>{const a=[...result.items];a[i]={...a[i],unitPrice:e.target.value};setResult({...result,items:a});}}/></td>
                     <td style={S.td}><button style={S.del} onClick={()=>setResult({...result,items:result.items.filter((_,j)=>j!==i)})}>✕</button></td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <button style={{background:"none",border:"1px dashed #2a2a3a",color:"#6b7280",borderRadius:6,padding:"6px",cursor:"pointer",fontSize:12,width:"100%",marginBottom:8}} onClick={()=>setResult({...result,items:[...(result.items||[]),{name:"",quantity:"",unit:"",unitPrice:"",totalPrice:""}]})}>＋ 商品を追加</button>
+          <button style={{background:"none",border:"1px dashed #2a2a3a",color:"#6b7280",borderRadius:6,padding:"6px",cursor:"pointer",fontSize:12,width:"100%",marginBottom:8}} onClick={()=>setResult({...result,items:[...(result.items||[]),{name:"",unit:"",unitPrice:""}]})}>＋ 商品を追加</button>
           <div style={{background:"rgba(0,119,182,0.08)",border:"1px solid #0077B644",borderRadius:6,padding:8,fontSize:11,color:"#93c5fd",marginBottom:8}}>
-            💡 在庫と名前が一致する場合は在庫数を加算。新商品は在庫管理に追加されます。
+            💡 同じ商品名は1つにまとめて登録。既存商品は単価を更新、新商品は在庫管理に追加（在庫数は0）。
           </div>
           <button onClick={save} style={{width:"100%",padding:11,background:"linear-gradient(90deg,#059669,#10b981)",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer"}}>💾 在庫管理に登録する</button>
         </div>
