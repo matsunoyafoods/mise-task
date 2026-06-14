@@ -235,6 +235,7 @@ const nowTime = () => new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minu
 const ROLES = { HONBU:"本部", TENCHO:"店長", STAFF:"スタッフ" };
 const DEFAULT_ADMIN_PASSWORD = "1234";
 const DEFAULT_TASK_CATS = [];
+const DEFAULT_POINT_CONFIG = { prepDone:10, amountVerified:8, cleanMult:2, deviation:-5 };
 
 // ═══════════════════════════════════════════════════════════════════════
 // ██  DEMO DATA — API未接続時のデモ用データ（本番ではDBから取得）
@@ -2908,13 +2909,17 @@ function OrderView({inventory, setInventory, suppliers, setSuppliers, orders, se
 }
 
 // ─── COMMISSION VIEW ───
-function CommissionView({allPrepTasks, cleanTasks}) {
+function CommissionView({allPrepTasks, cleanTasks, pointConfig, setPointConfig, currentUserId}) {
+  const PC = { ...DEFAULT_POINT_CONFIG, ...(pointConfig||{}) };
+  const isHonbu = INITIAL_USERS.find(u=>u.id===currentUserId)?.role === "本部";
+  const isBy = (t,uid)=> Array.isArray(t.completedBy) ? t.completedBy.includes(uid) : t.completedBy===uid;
   const calcPts = uid => {
     let pts = 0;
-    allPrepTasks.forEach(t=>{if(t.completedBy===uid){pts+=10;if(t.amountVerified)pts+=8;if(t.amountLog?.some(l=>!l.ok))pts-=5;}});
-    cleanTasks.forEach(t=>{if(t.completedBy===uid)pts+=t.points*2;});
+    allPrepTasks.forEach(t=>{if(isBy(t,uid)){pts+=Number(PC.prepDone)||0;if(t.amountVerified)pts+=Number(PC.amountVerified)||0;if(t.amountLog?.some(l=>!l.ok))pts+=Number(PC.deviation)||0;}});
+    cleanTasks.forEach(t=>{if(isBy(t,uid))pts+=(Number(t.points)||0)*(Number(PC.cleanMult)||1);});
     return Math.max(0,pts);
   };
+  const setPC = (k,v)=> setPointConfig && setPointConfig({...PC,[k]:v===""?"":Number(v)});
   const ranked = [...INITIAL_USERS].filter(u=>u.role!=="本部").sort((a,b)=>calcPts(b.id)-calcPts(a.id));
   const medals = ["🥇","🥈","🥉","4位","5位","6位"];
   return (
@@ -2924,15 +2929,28 @@ function CommissionView({allPrepTasks, cleanTasks}) {
         <p style={{fontSize:12,color:"#8b95a1"}}>タスク完了・分量精度・清掃からコミッション率を算出</p>
       </div>
       <div style={{background:"#0c0c18",border:"1px solid #1e1e2e",borderRadius:12,padding:20,marginBottom:24}}>
-        <div style={{fontSize:12,fontWeight:700,color:"#aaa",marginBottom:14}}>ポイント設定</div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#aaa"}}>ポイント設定</div>
+          {isHonbu ? <span style={{fontSize:10,color:"#E85D04"}}>本部のみ編集可</span> : <span style={{fontSize:10,color:"#6b7280"}}>本部のみ編集できます</span>}
+        </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}}>
-          {[{l:"仕込み完了",p:"+10pt",c:"#E85D04"},{l:"分量確認済み",p:"+8pt",c:"#2D9D78"},{l:"クリーン完了",p:"×2pt",c:"#C9184A"},{l:"差異あり(5%超)",p:"−5pt",c:"#f87171"}].map(r=>(
-            <div key={r.l} style={{background:"#1a1a2a",borderRadius:8,padding:"10px 14px",display:"flex",justifyContent:"space-between"}}>
+          {[{k:"prepDone",l:"仕込み完了",suf:"pt",c:"#E85D04"},{k:"amountVerified",l:"分量確認済み",suf:"pt",c:"#2D9D78"},{k:"cleanMult",l:"クリーン完了（倍率）",suf:"×",c:"#C9184A"},{k:"deviation",l:"差異あり(5%超)",suf:"pt",c:"#f87171"}].map(r=>(
+            <div key={r.k} style={{background:"#1a1a2a",borderRadius:8,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
               <span style={{fontSize:11,color:"#9ca3af"}}>{r.l}</span>
-              <span style={{fontSize:13,fontWeight:800,color:r.c,fontFamily:"monospace"}}>{r.p}</span>
+              {isHonbu ? (
+                <span style={{display:"flex",alignItems:"center",gap:4}}>
+                  {r.suf==="×" && <span style={{fontSize:12,color:r.c}}>×</span>}
+                  <input type="number" value={PC[r.k]} onChange={e=>setPC(r.k,e.target.value)}
+                    style={{width:60,background:"#0c0c18",border:"1px solid #2a2a3a",color:r.c,borderRadius:6,padding:"5px 8px",fontSize:13,fontWeight:800,textAlign:"right",fontFamily:"monospace"}}/>
+                  {r.suf==="pt" && <span style={{fontSize:11,color:"#7c8794"}}>pt</span>}
+                </span>
+              ) : (
+                <span style={{fontSize:13,fontWeight:800,color:r.c,fontFamily:"monospace"}}>{r.suf==="×"?"×"+PC[r.k]:(PC[r.k]>0?"+":"")+PC[r.k]+"pt"}</span>
+              )}
             </div>
           ))}
         </div>
+        {isHonbu && <div style={{fontSize:10,color:"#6b7280",marginTop:10}}>変更は自動保存され、全スタッフの集計に反映されます。</div>}
       </div>
       {ranked.map((u,idx)=>{
         const pts = calcPts(u.id);
@@ -4997,6 +5015,7 @@ function AppInner() {
   const [notification, setNotification] = useState(null);
   const [taskCats, setTaskCats] = useState(DEFAULT_TASK_CATS);
   const saveTaskCats = cats => { setTaskCats(cats); };
+  const [pointConfig, setPointConfig] = useState(DEFAULT_POINT_CONFIG);
   const [openItems,  setOpenItems]  = useState(OPS_OPEN);
   const [closeItems, setCloseItems] = useState(OPS_CLOSE);
   const [paletteDrag, setPaletteDrag] = useState(null);
@@ -5071,6 +5090,7 @@ function AppInner() {
     setCloseItems(data?.closeItems || []);
     setTaskCats(data?.taskCats || []);
     setHqTasks(data?.hqTasks || []);
+    setPointConfig(data?.pointConfig || DEFAULT_POINT_CONFIG);
     setLastCarryDate(data?.lastCarryDate || null);
   };
 
@@ -5146,6 +5166,7 @@ function AppInner() {
   useRemoteStateSync(syncEnabled, "openItems", openItems, notify);
   useRemoteStateSync(syncEnabled, "closeItems", closeItems, notify);
   useRemoteStateSync(syncEnabled, "hqTasks", hqTasks, notify);
+  useRemoteStateSync(syncEnabled, "pointConfig", pointConfig, notify);
   useRemoteStateSync(syncEnabled && lastCarryDate !== undefined, "lastCarryDate", lastCarryDate, notify);
 
   INITIAL_USERS = users;
@@ -5501,7 +5522,7 @@ function AppInner() {
           {view==="order"     && <OrderView inventory={inventory} setInventory={setInventory} suppliers={suppliers} setSuppliers={setSuppliers} orders={orders} setOrders={setOrders} priceHistory={priceHistory} setPriceHistory={setPriceHistory} currentUserId={currentUserId} notify={notify} storeFilter={storeFilter}/>}
           {view==="tasks"     && <TaskManagerView routines={routines} setRoutines={setRoutines} allPrepTasks={allPrepTasks} setAllPrepTasks={setAllPrepTasks} cleanTasks={cleanTasks} setCleanTasks={setCleanTasks} notify={notify} storeFilter={storeFilter} taskCats={taskCats} saveTaskCats={saveTaskCats}/>}
           {view==="ops"       && <OpsView currentUserId={currentUserId} storeFilter={storeFilter} notify={notify} openItems={openItems} setOpenItems={setOpenItems} closeItems={closeItems} setCloseItems={setCloseItems}/>}
-          {view==="commission"&& <CommissionView allPrepTasks={allPrepTasks} cleanTasks={cleanTasks}/>}
+          {view==="commission"&& <CommissionView allPrepTasks={allPrepTasks} cleanTasks={cleanTasks} pointConfig={pointConfig} setPointConfig={setPointConfig} currentUserId={currentUserId}/>}
           {view==="ai_input"   && <AIInputView recipes={recipes} setRecipes={setRecipes} inventory={inventory} setInventory={setInventory} suppliers={suppliers} notify={notify}/>}
           {view==="billing"    && <BillingView notify={notify}/>}
           {view==="ai_support" && <AISupportView/>}

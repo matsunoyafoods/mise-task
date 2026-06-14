@@ -27,7 +27,7 @@ const ROLE_JP: Record<string, AppClaims["app_role"]> = {
 const KV_RESOURCES = [
   "stores", "users", "suppliers", "inventory", "orders", "recipes", "routines",
   "prepTasks", "cleanTasks", "taskCats", "openItems", "closeItems",
-  "priceHistory", "hqTasks", "lastCarryDate",
+  "priceHistory", "hqTasks", "pointConfig", "lastCarryDate",
 ];
 
 function path(req: Request): string[] {
@@ -170,6 +170,7 @@ async function bootstrap(c: AppClaims): Promise<Response> {
     prepTasks: st.prepTasks ?? [], cleanTasks: st.cleanTasks ?? [],
     taskCats: st.taskCats ?? [], openItems: st.openItems ?? [], closeItems: st.closeItems ?? [],
     priceHistory: st.priceHistory ?? [], hqTasks: st.hqTasks ?? [],
+    pointConfig: st.pointConfig ?? null,
     lastCarryDate: st.lastCarryDate ?? null,
   });
 }
