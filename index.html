@@ -1070,15 +1070,36 @@ function SupplierSelfRegModal({token, suppliers, setSuppliers, onClose}) {
 
 
 // ─── DASHBOARD ───
-function Dashboard({allPrepTasks, cleanTasks, hqTasks, currentUserId, inventory, orders, storeFilter}) {
+function Dashboard({allPrepTasks, cleanTasks, hqTasks, setHqTasks, currentUserId, inventory, orders, storeFilter, notify}) {
   const todayPrep = allPrepTasks.filter(t=>t.date===todayStr && (storeFilter ? t.store===storeFilter : true));
   const todayClean = cleanTasks.filter(t=>storeFilter ? t.store===storeFilter : true);
   const lowStock = inventory.filter(i=>i.stock<=i.minStock);
   const pendingOrders = orders.filter(o=>!o.inspected && o.status==="sent" && (storeFilter ? o.storeId===storeFilter : true));
   const warns = allPrepTasks.filter(t=>t.amountLog?.some(l=>!l.ok) && t.date===todayStr);
   const myPending = currentUserId != null ? [...todayPrep,...todayClean,...hqTasks].filter(t=>t.assignedTo===currentUserId&&!t.completedAt) : [];
-  const urgent = hqTasks.filter(t=>t.priority==="high"&&!t.completedAt);
   const currentUserData = INITIAL_USERS.find(u=>u.id===currentUserId);
+
+  // ── 本部タスク（本部・店長が追加可） ──
+  const canEditHq = currentUserData?.role==="本部" || currentUserData?.role==="店長";
+  const openHq = hqTasks.filter(t=>!t.completedAt)
+    .slice().sort((a,b)=>(b.priority==="high"?1:0)-(a.priority==="high"?1:0));
+  const hasUrgent = openHq.some(t=>t.priority==="high");
+  const [showHqForm, setShowHqForm] = useState(false);
+  const [hqForm, setHqForm] = useState({name:"",deadline:"",priority:"normal",assignedTo:"",store:storeFilter||""});
+  const addHqTask = () => {
+    if(!hqForm.name.trim()){ notify && notify("タスク名を入力してください","warn"); return; }
+    setHqTasks(p=>[...p,{
+      id:"hq"+Date.now(), name:hqForm.name.trim(), deadline:hqForm.deadline||"",
+      priority:hqForm.priority, assignedTo: hqForm.assignedTo?Number(hqForm.assignedTo):null,
+      store: hqForm.store?Number(hqForm.store):null, completedAt:null, completedBy:null,
+      createdAt:new Date().toISOString().slice(0,10),
+    }]);
+    setHqForm({name:"",deadline:"",priority:"normal",assignedTo:"",store:storeFilter||""});
+    setShowHqForm(false);
+    notify && notify("本部タスクを追加しました");
+  };
+  const delHqTask = (id) => { if(window.confirm("このタスクを削除しますか？")) setHqTasks(p=>p.filter(x=>x.id!==id)); };
+  const doneHqTask = (id) => setHqTasks(p=>p.map(x=>x.id===id?{...x,completedAt:new Date().toISOString(),completedBy:currentUserId}:x));
 
   const Stat = ({label,value,color,icon,sub}) => (
     <div style={{background:"#0c0c18",border:`1px solid ${color}22`,borderRadius:14,padding:18}}>
@@ -1121,18 +1142,75 @@ function Dashboard({allPrepTasks, cleanTasks, hqTasks, currentUserId, inventory,
           </div>
         )}
 
-        <div style={{background:urgent.length>0?"#130808":"#0c0c18",border:`1px solid ${urgent.length>0?"#9a3412":"#1e1e2e"}`,borderRadius:14,padding:20}}>
-          <div style={{fontSize:13,fontWeight:700,color:urgent.length>0?"#fb923c":"#7c8794",marginBottom:14}}>
-            {urgent.length>0?"⚠ 緊急本部タスク":"本部タスク"}
+        <div style={{background:hasUrgent?"#130808":"#0c0c18",border:`1px solid ${hasUrgent?"#9a3412":"#1e1e2e"}`,borderRadius:14,padding:20}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+            <div style={{fontSize:13,fontWeight:700,color:hasUrgent?"#fb923c":"#7c8794"}}>
+              {hasUrgent?"⚠ 本部タスク":"本部タスク"}
+            </div>
+            {canEditHq && (
+              <button onClick={()=>setShowHqForm(v=>!v)}
+                style={{padding:"4px 10px",background:showHqForm?"#1a1a2e":"rgba(232,93,4,.12)",border:"1px solid #E85D0455",color:"#E85D04",borderRadius:7,fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                {showHqForm?"× 閉じる":"＋ 追加"}
+              </button>
+            )}
           </div>
-          {urgent.length===0
-            ? <div style={{color:"#6b7280",fontSize:13}}>緊急タスクなし</div>
-            : urgent.map(t=>(
-              <div key={t.id} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:"1px solid #1e1010"}}>
-                <span style={{fontSize:13,color:"#eee"}}>{t.name}</span>
-                <span style={{fontSize:11,color:"#fb923c"}}>〆{t.deadline}</span>
+
+          {showHqForm && (
+            <div style={{background:"#0a0a14",border:"1px solid #1e1e2e",borderRadius:10,padding:12,marginBottom:14,display:"flex",flexDirection:"column",gap:8}}>
+              <input value={hqForm.name} onChange={e=>setHqForm(p=>({...p,name:e.target.value}))} placeholder="タスク名（例: 月末棚卸しの報告）"
+                style={{padding:"8px 10px",background:"#0c0c18",border:"1px solid #2a2a3a",color:"#eee",borderRadius:7,fontSize:12}}/>
+              <div style={{display:"flex",gap:8}}>
+                <input type="date" value={hqForm.deadline} onChange={e=>setHqForm(p=>({...p,deadline:e.target.value}))}
+                  style={{flex:1,padding:"8px 10px",background:"#0c0c18",border:"1px solid #2a2a3a",color:"#eee",borderRadius:7,fontSize:12}}/>
+                <select value={hqForm.priority} onChange={e=>setHqForm(p=>({...p,priority:e.target.value}))}
+                  style={{flex:1,padding:"8px 10px",background:"#0c0c18",border:"1px solid #2a2a3a",color:"#eee",borderRadius:7,fontSize:12}}>
+                  <option value="normal">通常</option>
+                  <option value="high">緊急</option>
+                </select>
               </div>
-            ))
+              <div style={{display:"flex",gap:8}}>
+                <select value={hqForm.store} onChange={e=>setHqForm(p=>({...p,store:e.target.value}))}
+                  style={{flex:1,padding:"8px 10px",background:"#0c0c18",border:"1px solid #2a2a3a",color:"#eee",borderRadius:7,fontSize:12}}>
+                  <option value="">店舗：未指定</option>
+                  {INITIAL_STORES.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+                <select value={hqForm.assignedTo} onChange={e=>setHqForm(p=>({...p,assignedTo:e.target.value}))}
+                  style={{flex:1,padding:"8px 10px",background:"#0c0c18",border:"1px solid #2a2a3a",color:"#eee",borderRadius:7,fontSize:12}}>
+                  <option value="">担当：未割当</option>
+                  {INITIAL_USERS.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
+              </div>
+              <button onClick={addHqTask}
+                style={{padding:"9px",background:"linear-gradient(90deg,#E85D04,#F48C06)",border:"none",color:"#fff",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                追加する
+              </button>
+            </div>
+          )}
+
+          {openHq.length===0
+            ? <div style={{color:"#6b7280",fontSize:13}}>本部タスクなし</div>
+            : openHq.map(t=>{
+              const asg = INITIAL_USERS.find(u=>u.id===t.assignedTo);
+              return (
+                <div key={t.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:"1px solid #1a1a2a"}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      {t.priority==="high" && <span style={{fontSize:9,fontWeight:700,color:"#fb923c",background:"#2a1208",padding:"1px 6px",borderRadius:5}}>緊急</span>}
+                      <span style={{fontSize:13,color:"#eee",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.name}</span>
+                    </div>
+                    <div style={{fontSize:10,color:"#7c8794",marginTop:2}}>
+                      {t.deadline?`〆${t.deadline}　`:""}{asg?`担当: ${asg.name}`:"未割当"}
+                    </div>
+                  </div>
+                  <button onClick={()=>doneHqTask(t.id)} title="完了"
+                    style={{padding:"3px 8px",background:"rgba(74,222,128,.1)",border:"1px solid #4ade8055",color:"#4ade80",borderRadius:6,fontSize:10,cursor:"pointer"}}>完了</button>
+                  {canEditHq && (
+                    <button onClick={()=>delHqTask(t.id)} title="削除"
+                      style={{padding:"3px 8px",background:"rgba(239,68,68,.1)",border:"1px solid #ef444455",color:"#f87171",borderRadius:6,fontSize:10,cursor:"pointer"}}>削除</button>
+                  )}
+                </div>
+              );
+            })
           }
         </div>
 
@@ -5701,7 +5779,7 @@ function AppInner() {
         {/* Main content */}
         <div style={{flex:1,padding:"24px 28px",overflowY:"auto"}}>
           {view==="top"       && <TopView allPrepTasks={allPrepTasks} setAllPrepTasks={setAllPrepTasks} cleanTasks={cleanTasks} setCleanTasks={setCleanTasks} inventory={inventory} setInventory={setInventory} recipes={recipes} currentUserId={currentUserId} notify={notify} storeFilter={storeFilter} routines={routines} paletteDrag={paletteDrag} setPaletteDrag={setPaletteDrag} extDragTask={topDragTask} setExtDragTask={setTopDragTask} extDragOver={topDragOver} setExtDragOver={setTopDragOver} onDayChange={setTopActiveDay} onStoreChange={setTopActiveStore}/>}
-          {view==="dashboard" && <Dashboard allPrepTasks={allPrepTasks} cleanTasks={cleanTasks} hqTasks={hqTasks} currentUserId={currentUserId} inventory={inventory} orders={orders} storeFilter={storeFilter}/>}
+          {view==="dashboard" && <Dashboard allPrepTasks={allPrepTasks} cleanTasks={cleanTasks} hqTasks={hqTasks} setHqTasks={setHqTasks} currentUserId={currentUserId} inventory={inventory} orders={orders} storeFilter={storeFilter} notify={notify}/>}
           {view==="prep"      && <PrepView allTasks={allPrepTasks} setAllTasks={setAllPrepTasks} currentUserId={currentUserId} recipes={recipes} notify={notify} setInventory={setInventory} storeFilter={storeFilter}/>}
           {view==="clean"     && <CleanView tasks={cleanTasks} setTasks={setCleanTasks} currentUserId={currentUserId} notify={notify} storeFilter={storeFilter}/>}
         {view==="inventory" && <InventoryView inventory={inventory} setInventory={setInventory} notify={notify} storeFilter={storeFilter} currentUserId={currentUserId} stores={stores}/>}
