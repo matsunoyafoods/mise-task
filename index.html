@@ -4968,6 +4968,89 @@ function useRemoteStateSync(enabled, resource, data, notify) {
   }, [enabled, resource, data]);
 }
 
+// ─── AI分析ビュー（在庫・仕入れ・仕込みの効率化アドバイス）───
+function AIAnalysisView({ inventory, orders, allPrepTasks, cleanTasks, recipes, suppliers, storeFilter, notify }) {
+  const [loading, setLoading] = useState(false);
+  const [advice, setAdvice]   = useState("");
+  const [error, setError]     = useState("");
+
+  const inv = storeFilter ? inventory.filter(i=>i.storeId===storeFilter) : inventory;
+  const low  = inv.filter(i=> i.minStock>0 && Number(i.stock) <= Number(i.minStock));
+  const over = inv.filter(i=> i.minStock>0 && Number(i.stock) >= Number(i.minStock)*4);
+  const today = dateStr(0);
+  const prepToday = allPrepTasks.filter(t=>t.date===today && (storeFilter?t.store===storeFilter:true));
+  const prepUndone = prepToday.filter(t=>!t.completedAt);
+  const pendingInspect = orders.filter(o=>o.status==="sent"&&!o.inspected&&(storeFilter?o.storeId===storeFilter:true));
+
+  const analyze = async () => {
+    setLoading(true); setError(""); setAdvice("");
+    try {
+      const summary = {
+        在庫: inv.map(i=>({商品:i.name, 在庫:i.stock, 単位:i.unit, 最低在庫:i.minStock, 単価:i.unitPrice})),
+        欠品しそう: low.map(i=>i.name),
+        在庫過多の疑い: over.map(i=>`${i.name}(在庫${i.stock}/最低${i.minStock})`),
+        本日の仕込み: prepToday.map(t=>({名前:t.name, 完了:!!t.completedAt})),
+        未検品の発注: pendingInspect.length,
+        レシピ数: recipes.length,
+        登録業者: suppliers.map(s=>s.name),
+      };
+      const sys = "あなたは繁盛ラーメン店の運営アドバイザーです。提供される在庫・仕入れ・仕込みのデータを分析し、効率化と食材ロス削減のための具体的で実行可能なアドバイスを日本語で簡潔に返してください。\n観点: ①在庫過多→発注量・仕込み量の見直し提案 ②欠品リスク→早めの発注提案 ③仕込みの効率化（まとめ仕込み・作り置き・優先順位）④仕入れの最適化（発注頻度・ロット）。\n見出しと箇条書きで、重要なものから3〜6個に絞って。絵文字や記号の装飾は使わない。データが少ない場合はその旨と一般的な助言を述べる。";
+      const messages = [{ role:"user", content:[{ type:"text", text:"次の店舗データを分析してアドバイスをください。\n"+JSON.stringify(summary, null, 1) }]}];
+      const res = await fetch(CONFIG.AI_API_URL + "/chat", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json", ...(AUTH_TOKEN ? { Authorization:"Bearer "+AUTH_TOKEN } : {}) },
+        body: JSON.stringify({ messages, system: sys }),
+      });
+      if (!res.ok) throw new Error("AI "+res.status);
+      const data = await res.json();
+      const text = (data.content||[]).map(c=>c.text||"").join("").trim();
+      if (!text) throw new Error("空の応答");
+      setAdvice(text);
+    } catch(e) { setError("分析に失敗しました。AIキーの設定をご確認ください。"); }
+    setLoading(false);
+  };
+
+  const Card = ({label, value, color, sub}) => (
+    <div style={{flex:1,minWidth:120,background:"#0c0c18",border:`1px solid ${color}33`,borderRadius:12,padding:"14px 16px"}}>
+      <div style={{fontSize:26,fontWeight:800,color,fontFamily:"monospace",lineHeight:1}}>{value}</div>
+      <div style={{fontSize:11,color:"#9ca3af",marginTop:6}}>{label}</div>
+      {sub && <div style={{fontSize:10,color:"#6b7280",marginTop:2}}>{sub}</div>}
+    </div>
+  );
+
+  return (
+    <div style={{maxWidth:760,margin:"0 auto"}}>
+      <div style={{marginBottom:20}}>
+        <h2 style={{fontSize:22,fontWeight:800,color:"#fff",marginBottom:3}}>AI分析</h2>
+        <p style={{fontSize:12,color:"#8b95a1"}}>在庫・仕入れ・仕込みの状況をAIが分析し、効率化のアドバイスをします</p>
+      </div>
+
+      {/* 即時の状況サマリ */}
+      <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:14}}>
+        <Card label="欠品しそうな商品" value={low.length} color="#f87171" sub={low.length?low.slice(0,3).map(i=>i.name).join("・")+(low.length>3?"…":""):"なし"}/>
+        <Card label="在庫過多の疑い" value={over.length} color="#fbbf24" sub={over.length?over.slice(0,3).map(i=>i.name).join("・")+(over.length>3?"…":""):"なし"}/>
+        <Card label="本日の未完了仕込み" value={prepUndone.length} color="#E85D04" sub={"全"+prepToday.length+"件中"}/>
+        <Card label="未検品の発注" value={pendingInspect.length} color="#60a5fa"/>
+      </div>
+
+      <button onClick={analyze} disabled={loading}
+        style={{width:"100%",padding:14,borderRadius:12,border:"none",cursor:loading?"default":"pointer",fontSize:14,fontWeight:800,color:"#fff",background:loading?"#2a2a3a":"linear-gradient(90deg,#6D28D9,#7c3aed)",marginBottom:16}}>
+        {loading ? "AIが分析中..." : "AIで分析する"}
+      </button>
+
+      {error && <div style={{background:"rgba(239,68,68,0.1)",border:"1px solid #ef444444",color:"#f87171",padding:12,borderRadius:10,fontSize:12,marginBottom:12}}>{error}</div>}
+
+      {advice && (
+        <div style={{background:"#0c0c18",border:"1px solid #1e1e2e",borderRadius:14,padding:20}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#a78bfa",marginBottom:12}}>分析結果・アドバイス</div>
+          <div style={{fontSize:13,color:"#e8e8f0",lineHeight:1.9,whiteSpace:"pre-wrap"}}>{advice}</div>
+          <div style={{fontSize:10,color:"#6b7280",marginTop:14}}>※ AIによる提案です。最終判断は店舗の状況に合わせて行ってください。</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AppInner() {
   // ── ログイン状態 ──
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -5230,6 +5313,7 @@ function AppInner() {
     {id:"ops",        label:"開閉店チェック",       icon:"🏪"},
     {id:"commission", label:"評価・コミッション",  icon:"◈"},
     {id:"ai_input",   label:"AI自動入力",          icon:"🤖"},
+    {id:"ai_analysis",label:"AI分析",              icon:"📈"},
     {id:"billing",    label:"プラン・請求",        icon:"💳"},
     {id:"staff",      label:"スタッフ管理",          icon:"👥"},
     {id:"ai_support", label:"AIサポート",             icon:"💬"},
@@ -5524,6 +5608,7 @@ function AppInner() {
           {view==="ops"       && <OpsView currentUserId={currentUserId} storeFilter={storeFilter} notify={notify} openItems={openItems} setOpenItems={setOpenItems} closeItems={closeItems} setCloseItems={setCloseItems}/>}
           {view==="commission"&& <CommissionView allPrepTasks={allPrepTasks} cleanTasks={cleanTasks} pointConfig={pointConfig} setPointConfig={setPointConfig} currentUserId={currentUserId}/>}
           {view==="ai_input"   && <AIInputView recipes={recipes} setRecipes={setRecipes} inventory={inventory} setInventory={setInventory} suppliers={suppliers} notify={notify}/>}
+          {view==="ai_analysis"&& <AIAnalysisView inventory={inventory} orders={orders} allPrepTasks={allPrepTasks} cleanTasks={cleanTasks} recipes={recipes} suppliers={suppliers} storeFilter={storeFilter} notify={notify}/>}
           {view==="billing"    && <BillingView notify={notify}/>}
           {view==="ai_support" && <AISupportView/>}
           {view==="staff"      && <StaffView users={users} setUsers={setUsers} stores={stores} setStores={setStores} storeFilter={storeFilter} notify={notify} resetAllData={resetAllData}/>}
