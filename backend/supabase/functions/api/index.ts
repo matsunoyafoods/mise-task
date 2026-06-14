@@ -15,7 +15,7 @@
 // ============================================================================
 import { corsHeaders, err, json } from "../_shared/cors.ts";
 import { admin, anon } from "../_shared/db.ts";
-import { type AppClaims, getClaims, issue } from "../_shared/auth.ts";
+import { type AppClaims, getClaims, issue, issueQr, verifyQr } from "../_shared/auth.ts";
 import { verifyPin } from "../_shared/pin.ts";
 
 const FN = "api";
@@ -131,6 +131,46 @@ async function pinLogin(req: Request): Promise<Response> {
     store_id: u.store != null ? String(u.store) : null, app_user_id: String(u.id), name: u.name,
   });
   return json({ userId: u.id, token, user: { id: u.id, name: u.name, role: u.role, avatar: u.avatar, color: u.color, store: u.store } });
+}
+
+// ── 店頭QRログイン（店舗タブレットで毎回QR発行 → スタッフが自分の携帯でスキャン） ──
+//   POST /qr/issue (要認証: 店長/本部) → { qrToken, expiresAt }   店舗端末が短命QRを発行
+//   POST /qr/login (公開)            → 店舗 + スタッフ一覧（storeLogin と同形）
+async function qrIssue(c: AppClaims, req: Request): Promise<Response> {
+  if (c.app_role !== "hq" && c.app_role !== "manager") {
+    return err("forbidden", "QR発行は店長/本部のみ可能です", 403);
+  }
+  let storeId = c.store_id;
+  if (!storeId) {
+    const b = await body(req);
+    storeId = b.storeId != null ? String(b.storeId) : null;
+  }
+  if (!storeId) return err("invalid_input", "店舗が特定できません");
+  // storeId がテナントに属するか軽く検証
+  const stores = ((await getState(c.tenant_id, "stores")) ?? []) as any[];
+  if (!stores.some((s) => String(s.id) === String(storeId))) {
+    return err("not_found", "店舗が見つかりません", 404);
+  }
+  const { token, exp } = await issueQr(c.tenant_id, String(storeId));
+  return json({ qrToken: token, expiresAt: exp });
+}
+
+async function qrLogin(req: Request): Promise<Response> {
+  const { qrToken } = await body(req) as { qrToken?: string };
+  if (!qrToken) return err("invalid_input", "qrToken が必要です");
+  let info: { tenant_id: string; store_id: string };
+  try {
+    info = await verifyQr(qrToken);
+  } catch {
+    return err("qr_expired", "QRが無効または期限切れです。店舗で新しいQRを表示してください。", 401);
+  }
+  const stores = ((await getState(info.tenant_id, "stores")) ?? []) as any[];
+  const store = stores.find((s) => String(s.id) === String(info.store_id));
+  if (!store) return err("not_found", "店舗が見つかりません", 404);
+  const users = ((await getState(info.tenant_id, "users")) ?? []) as any[];
+  const storeUsers = users.filter((u) => u.store === store.id && u.role !== "本部")
+    .map((u) => ({ id: u.id, name: u.name, role: u.role, avatar: u.avatar, color: u.color, hasPin: !!u.pinHash }));
+  return json({ storeId: store.id, storeName: store.name, tenantId: info.tenant_id, users: storeUsers });
 }
 
 // ── 業者セルフ登録（KV の suppliers をトークンで更新。公開） ──────────────────
@@ -345,9 +385,12 @@ Deno.serve(async (req) => {
     }
     if (m === "POST" && p[0] === "suppliers" && p[1] === "register") return await supplierRegister(req);
     if (m === "POST" && p[0] === "suppliers" && p[1] === "price-update") return await supplierPriceUpdate(req);
+    if (m === "POST" && p[0] === "qr" && p[1] === "login") return await qrLogin(req);
 
     const claims = await getClaims(req);
     if (!claims) return err("unauthorized", "トークンが無効です", 401);
+
+    if (m === "POST" && p[0] === "qr" && p[1] === "issue") return await qrIssue(claims, req);
 
     if (m === "GET"  && p[0] === "bootstrap" && !p[1]) return await bootstrap(claims);
     if (m === "POST" && p[0] === "bootstrap" && p[1] === "reset") return await resetState(claims);

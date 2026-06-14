@@ -95,6 +95,10 @@ const api = {
     loginByPin: (tenantId, storeId, userId, pin) => api._fetch(`/auth/pin-login`, { method: "POST", body: JSON.stringify({ tenantId, storeId, userId, pin }) }),
     // 本部ログイン（メール+パスワード） → {token, userId}
     loginHonbu: (email, password) => api._fetch(`/auth/honbu-login`, { method: "POST", body: JSON.stringify({ email, password }) }),
+    // 店舗タブレットが短命QRを発行（要ログイン: 店長/本部） → {qrToken, expiresAt}
+    issueQr: (storeId) => api._fetch(`/qr/issue`, { method: "POST", body: JSON.stringify({ storeId }) }),
+    // スタッフ携帯がQRトークンでログイン（公開） → {storeId, storeName, tenantId, users}
+    loginByQr: (qrToken) => api._fetch(`/qr/login`, { method: "POST", body: JSON.stringify({ qrToken }) }),
   },
 
   app: {
@@ -4655,6 +4659,82 @@ function PwChangeForm({verifyHonbuPassword, updateAdminPassword, onClose, notify
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// ██  STAFF QR — 店舗タブレットで毎回新しい時限QRを生成して表示
+// ═══════════════════════════════════════════════════════════════════════
+function StaffQRView({ storeFilter, stores, notify }) {
+  const qrRef = useRef(null);
+  const [info, setInfo] = useState(null);   // {qrToken, expiresAt(秒)}
+  const [err, setErr] = useState("");
+  const [secs, setSecs] = useState(0);
+  const storeId = storeFilter || null;
+
+  const gen = async () => {
+    setErr("");
+    try { setInfo(await api.auth.issueQr(storeId)); }
+    catch (e) { setErr(e.message || "QRの発行に失敗しました"); setInfo(null); }
+  };
+
+  // 初回＋80秒ごとに自動再発行（トークンは90秒で失効）
+  useEffect(() => { gen(); const t = setInterval(gen, 80000); return () => clearInterval(t); }, [storeId]);
+
+  // QR描画
+  useEffect(() => {
+    if (!info || !qrRef.current || typeof QRCode === "undefined") return;
+    const url = `${location.origin}${location.pathname}?qr=${encodeURIComponent(info.qrToken)}`;
+    qrRef.current.innerHTML = "";
+    new QRCode(qrRef.current, { text: url, width: 260, height: 260, colorDark: "#000000", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
+  }, [info]);
+
+  // カウントダウン
+  useEffect(() => {
+    if (!info) return;
+    const tick = () => setSecs(Math.max(0, Math.round(info.expiresAt - Date.now() / 1000)));
+    tick(); const t = setInterval(tick, 1000); return () => clearInterval(t);
+  }, [info]);
+
+  const storeName = (stores || []).find(s => s.id === storeId)?.name;
+
+  return (
+    <div style={{maxWidth:560,margin:"0 auto"}}>
+      <div style={{fontSize:20,fontWeight:800,color:"#fff",marginBottom:4}}>スタッフ用ログインQR</div>
+      <div style={{fontSize:13,color:"#8b95a1",marginBottom:20,lineHeight:1.7}}>
+        この画面を店舗のタブレットに表示してください。スタッフは自分の携帯のカメラでこのQRを読み取るとログインできます。
+        QRは約90秒で自動的に新しくなるため、撮影して持ち帰っても店外では使えません。
+      </div>
+
+      <div style={{background:"#0c0c18",border:"1px solid #1e1e2e",borderRadius:20,padding:"28px 24px",textAlign:"center"}}>
+        {storeName
+          ? <div style={{fontSize:14,fontWeight:700,color:"#E85D04",marginBottom:16}}>🏪 {storeName}</div>
+          : <div style={{fontSize:14,fontWeight:700,color:"#E85D04",marginBottom:16}}>🏪 この店舗</div>}
+
+        {err ? (
+          <div style={{padding:"32px 16px"}}>
+            <div style={{fontSize:13,color:"#f87171",marginBottom:16,lineHeight:1.7}}>{err}</div>
+            {!storeId && <div style={{fontSize:12,color:"#8b95a1",marginBottom:16}}>本部アカウントの場合は、右上で店舗を選んでから表示してください。</div>}
+            <button onClick={gen} style={{padding:"10px 20px",background:"linear-gradient(90deg,#E85D04,#F48C06)",border:"none",color:"#fff",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer"}}>再試行</button>
+          </div>
+        ) : (
+          <>
+            <div style={{display:"inline-block",background:"#fff",padding:16,borderRadius:16}}>
+              <div ref={qrRef}/>
+            </div>
+            <div style={{marginTop:18,fontSize:13,color:"#8b95a1"}}>
+              新しいQRまで <span style={{color:"#fff",fontWeight:800,fontSize:16}}>{secs}</span> 秒
+            </div>
+            <button onClick={gen} style={{marginTop:16,padding:"8px 18px",background:"#12121f",border:"1px solid #2a2a3a",color:"#c7d0db",borderRadius:10,fontSize:12,fontWeight:700,cursor:"pointer"}}>今すぐ新しいQRにする</button>
+          </>
+        )}
+      </div>
+
+      <div style={{marginTop:16,fontSize:12,color:"#6b7280",lineHeight:1.8}}>
+        ・スタッフはマイページ不要。QRを読む → 自分の名前を選ぶ → PINでログイン、の流れです。<br/>
+        ・スタッフのログインは作業中だけ有効で、次回はまた店頭でQRを読み取る必要があります。
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // ██  LOGIN SCREEN — 店舗コード + PIN認証
 // ═══════════════════════════════════════════════════════════════════════
 function LoginScreen({ onLogin, stores, users }) {
@@ -4666,6 +4746,22 @@ function LoginScreen({ onLogin, stores, users }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [qrLoading, setQrLoading] = useState(false);
+
+  // 店頭QRをスキャンして開いた場合（?qr=...）→ 店舗を特定してスタッフ選択へ
+  useEffect(() => {
+    const qr = new URLSearchParams(window.location.search).get("qr");
+    if (!qr) return;
+    setQrLoading(true);
+    api.auth.loginByQr(qr)
+      .then(result => { if (result) { setSelectedStore(result); setStep("user"); } })
+      .catch(() => setError("QRの有効期限が切れています。店舗で新しいQRを表示してもらってください。"))
+      .finally(() => {
+        setQrLoading(false);
+        // URLから?qrを除去（再読込での再利用を防ぐ・どのみち失効）
+        window.history.replaceState({}, "", window.location.pathname);
+      });
+  }, []);
 
   const handleStoreCode = async () => {
     setError("");
@@ -4715,6 +4811,10 @@ function LoginScreen({ onLogin, stores, users }) {
           <div style={{fontSize:20,fontWeight:800,letterSpacing:".15em",color:"#fff"}}>MISE TASK</div>
           <div style={{fontSize:11,color:"#E85D04",letterSpacing:".2em",marginTop:4}}>ラーメン店舗管理システム</div>
         </div>
+
+        {qrLoading && (
+          <div style={{fontSize:13,color:"#8b95a1",textAlign:"center",marginBottom:16}}>QRを確認しています…</div>
+        )}
 
         {/* Step 1: Store Code */}
         {step === "store" && (
@@ -4768,7 +4868,7 @@ function LoginScreen({ onLogin, stores, users }) {
         {/* Step 2: User Selection */}
         {step === "user" && (
           <div>
-            <div style={{fontSize:14,fontWeight:700,color:"#fff",marginBottom:4,textAlign:"center"}}>🏪 {selectedStore.name}</div>
+            <div style={{fontSize:14,fontWeight:700,color:"#fff",marginBottom:4,textAlign:"center"}}>🏪 {selectedStore.name || selectedStore.storeName}</div>
             <div style={{fontSize:12,color:"#8b95a1",marginBottom:20,textAlign:"center"}}>スタッフを選択してください</div>
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
               {storeUsers.map(u => (
@@ -5317,6 +5417,7 @@ function AppInner() {
     {id:"ai_analysis",label:"AI分析",              icon:"📈"},
     {id:"billing",    label:"プラン・請求",        icon:"💳"},
     {id:"staff",      label:"スタッフ管理",          icon:"👥"},
+    {id:"staff_qr",   label:"スタッフQR",            icon:"📱"},
     {id:"ai_support", label:"AIサポート",             icon:"💬"},
   ];
 
@@ -5613,6 +5714,7 @@ function AppInner() {
           {view==="billing"    && <BillingView notify={notify}/>}
           {view==="ai_support" && <AISupportView/>}
           {view==="staff"      && <StaffView users={users} setUsers={setUsers} stores={stores} setStores={setStores} storeFilter={storeFilter} notify={notify} resetAllData={resetAllData}/>}
+          {view==="staff_qr"   && <StaffQRView storeFilter={storeFilter} stores={stores} notify={notify}/>}
         </div>
       </div>
     </div>
