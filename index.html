@@ -3047,6 +3047,7 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
           <div>
             <span style={{fontSize:14,fontWeight:700,color:"#eee"}}>{item.name}</span>
             <button onClick={()=>openEdit(item)} style={{marginLeft:8,padding:"1px 7px",fontSize:10,background:"#1a1a2a",border:"1px solid #2a2a3a",color:"#8b95a1",borderRadius:5,cursor:"pointer"}}>編集</button>
+            <button onClick={()=>{ if(window.confirm(`「${item.name}」を削除しますか？`)){ setInventory(p=>p.filter(x=>x.id!==item.id)); notify("商品を削除しました","warn"); } }} style={{marginLeft:6,padding:"1px 7px",fontSize:10,background:"rgba(239,68,68,0.12)",border:"1px solid #ef444455",color:"#f87171",borderRadius:5,cursor:"pointer"}}>削除</button>
           </div>
           <div style={{textAlign:"right"}}>
             <span style={{fontSize:20,fontWeight:800,color:isLow?"#f87171":"#38bdf8",fontFamily:"monospace"}}>
