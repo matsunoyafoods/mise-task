@@ -4845,6 +4845,25 @@ function StaffQRView({ storeFilter, stores, notify }) {
   );
 }
 
+// カスタム仕込み/クリーンの単発追加（タップ→名前など編集→追加。ルーティンには保存しない）
+function CustomTaskModal({ category, defaultDeadline, onAdd, onClose }) {
+  const isPrep = category==="prep";
+  const [name, setName] = useState("");
+  const [deadline, setDeadline] = useState(defaultDeadline || (isPrep?"10:00":"12:00"));
+  return (
+    <Modal onClose={onClose} width={380}>
+      <div style={{fontSize:17,fontWeight:800,color:"#fff",marginBottom:4}}>{isPrep?"🔪 仕込みタスクを追加":"✦ クリーンタスクを追加"}</div>
+      <div style={{fontSize:11,color:"#8b95a1",marginBottom:16}}>単発のタスクです（ルーティンには保存されません）</div>
+      <Input label="タスク名 *" value={name} onChange={e=>setName(e.target.value)} placeholder={isPrep?"例: ポークロール解凍":"例: 冷蔵庫の清掃"}/>
+      <Input label="締切時刻" type="time" value={deadline} onChange={e=>setDeadline(e.target.value)}/>
+      <div style={{display:"flex",gap:10,marginTop:8}}>
+        <Btn onClick={onClose} color="#1a1a2e" style={{color:"#8b95a1",flex:1}}>キャンセル</Btn>
+        <Btn onClick={()=>{ if(!name.trim()) return; onAdd(name.trim(), deadline); }} color={isPrep?"#E85D04":"#C9184A"} style={{flex:1}}>追加する</Btn>
+      </div>
+    </Modal>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // ██  LOGIN SCREEN — 店舗コード + PIN認証
 // ═══════════════════════════════════════════════════════════════════════
@@ -5291,6 +5310,7 @@ function AppInner() {
   const [lastCarryDate, setLastCarryDate] = useState(null);
   const syncEnabledRef = useRef(false);
   const versionsRef = useRef({}); // resource→version(updated_at)。楽観的ロック用
+  const [customAdd, setCustomAdd] = useState(null); // カスタム単発タスク追加モーダル
 
   // ── ログインハンドラ ──
   const handleLogin = (userId, storeId, token) => {
@@ -5626,6 +5646,20 @@ function AppInner() {
         </div>
       )}
 
+      {customAdd && (
+        <CustomTaskModal category={customAdd.category} defaultDeadline={customAdd.deadline}
+          onClose={()=>setCustomAdd(null)}
+          onAdd={(name,deadline)=>{
+            if (customAdd.category==="prep") {
+              setAllPrepTasks(p=>[...p,{id:"pt"+Date.now(),name,recipeId:null,deadline,store:customAdd.store,assignedTo:null,date:customAdd.date,completedAt:null,completedBy:null,amountVerified:false,amountLog:[]}]);
+            } else {
+              setCleanTasks(p=>[...p,{id:"ct"+Date.now(),name,area:"その他",deadline,store:customAdd.store,assignedTo:null,completedAt:null,completedBy:null,points:2}]);
+            }
+            setCustomAdd(null);
+            notify("✓ 「"+name+"」を追加しました");
+          }}/>
+      )}
+
       {/* Header */}
       {/* ── 管理者パスワードモーダル ── */}
       {/* 店舗切り替えパスワード確認モーダル */}
@@ -5815,6 +5849,11 @@ function AppInner() {
             const dateS = [0,1,2,3].map(i=>dateStr(-i))[topActiveDay] || dateStr(0);
             const toggle = k => setPaletteOpen(p=>({...p,[k]:!p[k]}));
             const addItem = (item) => {
+              // カスタムは名前など編集モーダルを開いてから追加（単発）
+              if (item.id==="_cp" || item.id==="_cc") {
+                setCustomAdd({ category:item.category, store:viewStore, date:dateS, deadline:item.deadline });
+                return;
+              }
               if (item.category==="prep") {
                 setAllPrepTasks(p=>[...p,{id:"pt"+Date.now(),name:item.name,recipeId:item.recipeId||null,deadline:item.deadline,store:viewStore,assignedTo:null,date:dateS,completedAt:null,completedBy:null,amountVerified:false,amountLog:[]}]);
               } else {
