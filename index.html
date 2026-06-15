@@ -3243,14 +3243,9 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
                   <input type="number" inputMode="decimal" value={form.bagSize} onChange={e=>setForm(p=>({...p,bagSize:e.target.value}))} placeholder="例: 500"
                     style={{width:"80px",padding:"7px",background:"#0c0c18",border:"1px solid #2a2a3a",color:"#eee",borderRadius:7,fontSize:12}}/>
                   <span style={{fontSize:12,color:"#9ca3af"}}>{form.unit||"個"} ＝ 1</span>
-                  <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
-                    {COUNT_UNITS.map(u=>(
-                      <button key={u} type="button" onClick={()=>setForm(p=>({...p,bagUnit:u}))}
-                        style={{padding:"3px 8px",borderRadius:5,border:"none",cursor:"pointer",fontSize:10,background:form.bagUnit===u?"#0077B6":"#1a1a2a",color:form.bagUnit===u?"#fff":"#9ca3af"}}>
-                        {u}
-                      </button>
-                    ))}
-                  </div>
+                  <input list="bagunit_list" value={form.bagUnit||""} onChange={e=>setForm(p=>({...p,bagUnit:e.target.value}))} placeholder="袋（選ぶか入力）"
+                    style={{width:120,padding:"7px",background:"#0c0c18",border:"1px solid #2a2a3a",color:"#eee",borderRadius:7,fontSize:12}}/>
+                  <datalist id="bagunit_list">{COUNT_UNITS.map(u=><option key={u} value={u}/>)}</datalist>
                 </div>
                 {form.bagSize && <div style={{fontSize:10,color:"#38bdf8",marginTop:6}}>例: {form.bagSize}{form.unit||"個"} = 1{form.bagUnit}</div>}
               </div>
