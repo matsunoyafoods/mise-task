@@ -3788,15 +3788,20 @@ function TopView({allPrepTasks, setAllPrepTasks, cleanTasks, setCleanTasks, inve
       r.freq==="once"    ? r.onceDate===viewDate :
       r.freq==="free"    ? (r.freeDates||[]).includes(viewDate) : false;
     const matches = routines.filter(r => r.active && r.category==="prep" && r.store===viewStore && matchToday(r));
-    const toAdd = matches.filter(r => !allPrepTasks.some(t => t.routineId===r.id && t.date===viewDate && t.store===viewStore));
-    if (toAdd.length === 0) return;
-    setAllPrepTasks(p => [...p, ...toAdd.map(r => ({
-      id: "pt_" + r.id + "_" + viewDate,
-      routineId: r.id, name: r.name, recipeId: r.recipeId || null,
-      deadline: r.deadline || "10:00", store: viewStore, assignedTo: r.assignedTo || null,
-      date: viewDate, completedAt: null, completedBy: null, amountVerified: false, amountLog: [],
-    }))]);
-  }, [routines, viewDate, viewStore, allPrepTasks]);
+    if (matches.length === 0) return;
+    // 重複判定は「現在の最新リスト(p)」で行う。削除時(allPrepTasks変化)には再実行しないので、
+    // 削除したタスクが即再生成されてしまう不具合を防ぐ。
+    setAllPrepTasks(p => {
+      const toAdd = matches.filter(r => !p.some(t => t.routineId===r.id && t.date===viewDate && t.store===viewStore));
+      if (toAdd.length === 0) return p;
+      return [...p, ...toAdd.map(r => ({
+        id: "pt_" + r.id + "_" + viewDate,
+        routineId: r.id, name: r.name, recipeId: r.recipeId || null,
+        deadline: r.deadline || "10:00", store: viewStore, assignedTo: r.assignedTo || null,
+        date: viewDate, completedAt: null, completedBy: null, amountVerified: false, amountLog: [],
+      }))];
+    });
+  }, [routines, viewDate, viewStore]);
 
   // タスク完了トグル
   const toggleDone = (task) => {
@@ -5881,8 +5886,8 @@ function AppInner() {
               <div style={{borderTop:"1px solid #14141f",marginTop:10,paddingTop:10}}>
                 <div style={{fontSize:9,color:"#6b7280",padding:"0 10px 6px",letterSpacing:".05em"}}>＋ タスクを追加（TOP）</div>
                 <Sec skey="prep"   label="🔪 仕込み"   color="#E85D04" items={prepItems}/>
-                <Sec skey="clean"  label="✦ クリーン"  color="#C9184A" items={cleanItems}/>
                 <Sec skey="custom" label="＋ カスタム" color="#0077B6" items={customItems}/>
+                <div style={{fontSize:9,color:"#5a6472",padding:"6px 10px 0",lineHeight:1.5}}>※ クリーンは「クリーン管理」で作った項目が毎日表示されます。単発で足す場合はカスタムから。</div>
               </div>
             );
           })()}
