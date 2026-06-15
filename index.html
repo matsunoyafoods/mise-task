@@ -2963,7 +2963,14 @@ function OrderView({inventory, setInventory, suppliers, setSuppliers, orders, se
                       : <span style={{fontSize:10,color:"#fb923c",background:"#1a0e00",padding:"3px 8px",borderRadius:20,border:"1px solid #78350f"}}>未登録</span>
                     }
                     <div style={{display:"flex",gap:6}}>
-                      <button onClick={()=>setShowSupplierReg(sup.token)}
+                      <button onClick={()=>{
+                          let t = sup.token;
+                          if(!t){ // トークンが無い業者は発行してから開く
+                            t = "tok_"+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+                            setSuppliers(p=>p.map(s=>s.id===sup.id?{...s,token:t}:s));
+                          }
+                          setShowSupplierReg(t);
+                        }}
                         style={{padding:"6px 14px",background:"#1a1a3a",border:"1px solid #2a2a5a",borderRadius:8,color:"#90a0ff",fontSize:11,cursor:"pointer",whiteSpace:"nowrap"}}>
                         {sup.selfRegistered ? "📋 登録内容を確認" : "🔗 登録フォームを開く"}
                       </button>
