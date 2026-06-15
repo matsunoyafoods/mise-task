@@ -3119,28 +3119,32 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
   const storageGroupOptions = allStorageGroups.length ? allStorageGroups : ["未設定"];
   // 既存の保管場所候補（店舗設定＋現在の在庫で使われている値）
   const storageOpts = [...new Set([...allStorageGroups, ...inventory.map(i=>i.storageGroup).filter(Boolean)])];
+  // 単位の候補（定番＋現在の在庫で使われている単位）
+  const unitOpts = [...new Set([...ALL_UNITS.filter(u=>u!=="その他"), ...inventory.map(i=>i.unit).filter(Boolean)])];
+  const [showBag, setShowBag] = useState(false);
 
   const openNew = () => {
     setEditItem(null);
     setForm({name:"",category:"調味料",storageGroup:storageGroupOptions[0],unit:"g",customUnit:"",stock:"0",minStock:"500",orderQty:"1000",supplierId:"s1",unitPrice:"0",bagSize:"",bagUnit:"袋"});
+    setShowBag(false);
     setShowForm(true);
   };
   const openEdit = (item) => {
     setEditItem(item);
     setForm({
       name:item.name, category:item.category, storageGroup:item.storageGroup,
-      unit:ALL_UNITS.includes(item.unit)?item.unit:"その他",
-      customUnit:ALL_UNITS.includes(item.unit)?"":item.unit,
+      unit:item.unit||"", customUnit:"",
       stock:String(item.stock), minStock:String(item.minStock),
       orderQty:String(item.orderQty), supplierId:item.supplierId||"s1",
       unitPrice:String(item.unitPrice),
       bagSize:String(item.bagSize||""), bagUnit:item.bagUnit||"袋"
     });
+    setShowBag(!!item.bagSize);
     setShowForm(true);
   };
   const saveItem = () => {
     if (!form.name.trim()) { notify("商品名を入力してください","warn"); return; }
-    const unit = form.unit==="その他" ? form.customUnit : form.unit;
+    const unit = (form.unit||"").trim() || "個";
     const payload = {
       name:form.name.trim(), category:form.category, storageGroup:form.storageGroup,
       unit, stock:Number(form.stock), minStock:Number(form.minStock),
@@ -3218,51 +3222,48 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
 
           {/* 単位セクション */}
           <div style={{background:"#0a0a16",border:"1px solid #1e1e2e",borderRadius:10,padding:14,marginBottom:14}}>
-            <div style={{fontSize:11,color:"#8b95a1",marginBottom:10,fontWeight:700}}>📐 単位設定</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
-              <div>
-                <div style={{fontSize:11,color:"#8b95a1",marginBottom:5}}>基本単位</div>
-                <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
-                  {ALL_UNITS.map(u=>(
-                    <button key={u} onClick={()=>setForm(p=>({...p,unit:u}))}
-                      style={{padding:"4px 10px",borderRadius:6,border:"none",cursor:"pointer",fontSize:11,background:form.unit===u?"#E85D04":"#1a1a2a",color:form.unit===u?"#fff":"#9ca3af"}}>
-                      {u}
-                    </button>
-                  ))}
+            <ComboInput label="単位（この商品を数える単位）" value={form.unit}
+              onChange={e=>setForm(p=>({...p,unit:e.target.value}))} options={unitOpts}
+              placeholder="例: 束 / 本 / g / 袋（選ぶか入力）"/>
+            <div style={{fontSize:10,color:"#7c8794",marginTop:-8,marginBottom:2}}>
+              一覧に無い単位は、そのまま入力すれば追加されます。下の在庫の数字は、ここで決めた単位で数えます。
+            </div>
+
+            {/* 袋・ケース換算（任意・初期は閉じる） */}
+            <button type="button" onClick={()=>setShowBag(v=>!v)}
+              style={{background:"none",border:"none",color:"#60a5fa",fontSize:11,cursor:"pointer",padding:0,marginTop:8}}>
+              {showBag ? "▾ 袋・ケースのまとめ買い設定を閉じる" : "▸ 袋・ケースでまとめ買いする場合はこちら（任意）"}
+            </button>
+            {showBag && (
+              <div style={{marginTop:8,background:"#0c0c18",border:"1px solid #1e1e2e",borderRadius:8,padding:10}}>
+                <div style={{fontSize:10,color:"#7c8794",marginBottom:8,lineHeight:1.6}}>
+                  1袋（1ケース）に何{form.unit||"個"}入っているかを設定すると、在庫を「○袋 と △{form.unit||"個"}」のように表示できます。使わなければ空のままでOKです。
                 </div>
-                {form.unit==="その他" && (
-                  <input value={form.customUnit} onChange={e=>setForm(p=>({...p,customUnit:e.target.value}))}
-                    placeholder="単位を入力（例: 束）"
-                    style={{marginTop:8,width:"100%",padding:"7px",background:"#0c0c18",border:"1px solid #2a2a3a",color:"#eee",borderRadius:7,fontSize:12}}/>
-                )}
-              </div>
-              <div>
-                <div style={{fontSize:11,color:"#8b95a1",marginBottom:5}}>袋/ケース換算（任意）</div>
-                <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:6}}>
-                  <input type="number" value={form.bagSize} onChange={e=>setForm(p=>({...p,bagSize:e.target.value}))}
-                    placeholder="例: 1800"
+                <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+                  <input type="number" inputMode="decimal" value={form.bagSize} onChange={e=>setForm(p=>({...p,bagSize:e.target.value}))} placeholder="例: 500"
                     style={{width:"80px",padding:"7px",background:"#0c0c18",border:"1px solid #2a2a3a",color:"#eee",borderRadius:7,fontSize:12}}/>
-                  <span style={{fontSize:11,color:"#7c8794"}}>{form.unit==="その他"?form.customUnit:form.unit}</span>
-                  <span style={{fontSize:11,color:"#7c8794"}}>=</span>
-                  <span style={{fontSize:11,color:"#7c8794"}}>1</span>
+                  <span style={{fontSize:12,color:"#9ca3af"}}>{form.unit||"個"} ＝ 1</span>
                   <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
                     {COUNT_UNITS.map(u=>(
-                      <button key={u} onClick={()=>setForm(p=>({...p,bagUnit:u}))}
+                      <button key={u} type="button" onClick={()=>setForm(p=>({...p,bagUnit:u}))}
                         style={{padding:"3px 8px",borderRadius:5,border:"none",cursor:"pointer",fontSize:10,background:form.bagUnit===u?"#0077B6":"#1a1a2a",color:form.bagUnit===u?"#fff":"#9ca3af"}}>
                         {u}
                       </button>
                     ))}
                   </div>
                 </div>
-                {form.bagSize && <div style={{fontSize:10,color:"#38bdf8"}}>例: {form.bagSize}{form.unit==="その他"?form.customUnit:form.unit} = 1{form.bagUnit}</div>}
+                {form.bagSize && <div style={{fontSize:10,color:"#38bdf8",marginTop:6}}>例: {form.bagSize}{form.unit||"個"} = 1{form.bagUnit}</div>}
               </div>
-            </div>
+            )}
           </div>
 
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
-            <Input label="現在在庫" type="number" value={form.stock} onChange={e=>setForm(p=>({...p,stock:e.target.value}))}/>
-            <Input label="最低在庫" type="number" value={form.minStock} onChange={e=>setForm(p=>({...p,minStock:e.target.value}))}/>
-            <Input label="発注数量" type="number" value={form.orderQty} onChange={e=>setForm(p=>({...p,orderQty:e.target.value}))}/>
+            <Input label={`現在在庫（${form.unit||"個"}）`} type="number" value={form.stock} onChange={e=>setForm(p=>({...p,stock:e.target.value}))}/>
+            <Input label={`最低在庫（${form.unit||"個"}）`} type="number" value={form.minStock} onChange={e=>setForm(p=>({...p,minStock:e.target.value}))}/>
+            <Input label={`発注数量（${form.unit||"個"}）`} type="number" value={form.orderQty} onChange={e=>setForm(p=>({...p,orderQty:e.target.value}))}/>
+          </div>
+          <div style={{fontSize:10,color:"#7c8794",marginTop:6,lineHeight:1.6}}>
+            現在在庫＝今ある数 ／ 最低在庫＝これを下回ったら発注アラート ／ 発注数量＝1回に頼む数（すべて{form.unit||"個"}）
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
             <Select label="取引業者" value={form.supplierId} onChange={e=>setForm(p=>({...p,supplierId:e.target.value}))}
@@ -3538,7 +3539,7 @@ function TaskManagerView({routines, setRoutines, allPrepTasks, setAllPrepTasks, 
           <Input label="タスク名 *" value={singleForm.name} onChange={e=>setSingleForm(p=>({...p,name:e.target.value}))} placeholder="例: 特別仕込み"/>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
             <Select label="カテゴリー" value={singleForm.category} onChange={e=>setSingleForm(p=>({...p,category:e.target.value}))}
-              options={taskCats.map(c=>({value:c.id,label:c.icon+" "+c.label}))}/>
+              options={[{value:"prep",label:"🔪 仕込み"},{value:"clean",label:"✦ クリーン"},...taskCats.filter(c=>c.id!=="prep"&&c.id!=="clean").map(c=>({value:c.id,label:(c.icon||"📋")+" "+c.label}))]}/>
             <Select label="店舗" value={String(singleForm.store)} onChange={e=>setSingleForm(p=>({...p,store:Number(e.target.value)}))}
               options={INITIAL_STORES.map(s=>({value:String(s.id),label:s.name}))}/>
           </div>
@@ -4254,8 +4255,8 @@ function OpsView({currentUserId, storeFilter, notify, openItems, setOpenItems, c
   const setItems  = mode==="open" ? setOpenItems : setCloseItems;
   const done    = items.filter(i=>checks[i.id]?.done);
   const total   = items.length;
-  const pct     = Math.round(done.length/total*100);
-  const allDone = done.length===total;
+  const pct     = total ? Math.round(done.length/total*100) : 0;
+  const allDone = total>0 && done.length===total;
   const viewStore = storeFilter || 1;
   const storeUsers = INITIAL_USERS.filter(u=>u.store===viewStore);
   const currentUser = INITIAL_USERS.find(u=>u.id===currentUserId);
