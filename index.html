@@ -391,6 +391,19 @@ const Input = ({label,value,onChange,type="text",placeholder,style={},inputMode}
       style={{width:"100%",padding:"9px 12px",background:"#0c0c18",border:"1px solid #2a2a3a",color:"#eee",borderRadius:8,fontSize:13,...style}}/>
   </div>
 );
+// 既存から選ぶ／無ければ入力して追加（datalist併用のコンボ入力）
+const ComboInput = ({label,value,onChange,options=[],placeholder,style={}}) => {
+  const [listId] = useState(()=>"dl"+Math.random().toString(36).slice(2,9));
+  const opts = [...new Set((options||[]).filter(Boolean))];
+  return (
+    <div style={{marginBottom:14}}>
+      {label&&<div style={{fontSize:11,color:"#8b95a1",marginBottom:5}}>{label}</div>}
+      <input list={listId} value={value||""} onChange={onChange} placeholder={placeholder}
+        style={{width:"100%",padding:"9px 12px",background:"#0c0c18",border:"1px solid #2a2a3a",color:"#eee",borderRadius:8,fontSize:13,...style}}/>
+      <datalist id={listId}>{opts.map((o,i)=><option key={i} value={o}/>)}</datalist>
+    </div>
+  );
+};
 const Select = ({label,value,onChange,options,style={}}) => (
   <div style={{marginBottom:14}}>
     {label&&<div style={{fontSize:11,color:"#8b95a1",marginBottom:5}}>{label}</div>}
@@ -1405,7 +1418,7 @@ function RecipeAIPanel({ recipes, setRecipes, notify }) {
   );
 }
 
-function SupplierAIPanel({ inventory, setInventory, suppliers, notify }) {
+function SupplierAIPanel({ inventory, setInventory, suppliers, setSuppliers, notify }) {
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -1440,6 +1453,19 @@ function SupplierAIPanel({ inventory, setInventory, suppliers, notify }) {
 
   const save = () => {
     if (!result?.items?.length) return;
+    // 業者を解決（既存と一致すればそのID、入力された新規業者なら作成）
+    let supplierId = result.supplierId || "";
+    const nm = (result.supplierName||"").trim();
+    if (!supplierId && nm) {
+      const ex = suppliers.find(s => s.name === nm);
+      if (ex) { supplierId = ex.id; }
+      else if (setSuppliers) {
+        const newSup = { id:"s"+Date.now(), name:nm, token:"tok_"+Date.now().toString(36)+Math.random().toString(36).slice(2,6), orderMethods:[], selfRegistered:false, registeredAt:new Date().toLocaleDateString("ja-JP") };
+        setSuppliers(p=>[...p, newSup]);
+        supplierId = newSup.id;
+        notify("業者「"+nm+"」を新規登録しました");
+      }
+    }
     // 商品名で重複をまとめる（同名は1つ＝最後の単価を採用）
     const map = new Map();
     result.items.forEach(item => {
@@ -1461,7 +1487,7 @@ function SupplierAIPanel({ inventory, setInventory, suppliers, notify }) {
         }
       } else {
         // 新規商品マスタ（数量・合計は登録しない。在庫数は0）
-        newItems.push({ id:"inv"+Date.now()+Math.random().toString(36).slice(2,7), name, category:"その他", storageGroup:"未設定", unit:item.unit||"個", stock:0, minStock:0, orderQty:0, supplierId:result.supplierId, unitPrice:price });
+        newItems.push({ id:"inv"+Date.now()+Math.random().toString(36).slice(2,7), name, category:"その他", storageGroup:"未設定", unit:item.unit||"個", stock:0, minStock:0, orderQty:0, supplierId, unitPrice:price });
         added++;
       }
     });
@@ -1495,10 +1521,9 @@ function SupplierAIPanel({ inventory, setInventory, suppliers, notify }) {
           <div style={{color:"#4ade80",fontSize:12,fontWeight:700,marginBottom:10}}>✅ 読み取り完了（修正可）</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
             <div><label style={{fontSize:11,color:"#8b95a1",fontWeight:700,marginBottom:4,display:"block"}}>業者</label>
-              <select style={S.input} value={result.supplierId||""} onChange={e=>setResult({...result,supplierId:e.target.value})}>
-                <option value="">-- 選択 --</option>
-                {suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
+              <input list="ai_supplier_list" style={S.input} value={result.supplierName||""} placeholder="選択 または 入力して追加"
+                onChange={e=>{ const name=e.target.value; const m=suppliers.find(s=>s.name===name); setResult({...result, supplierName:name, supplierId: m?m.id:""}); }}/>
+              <datalist id="ai_supplier_list">{suppliers.map(s=><option key={s.id} value={s.name}/>)}</datalist>
             </div>
             <div><label style={{fontSize:11,color:"#8b95a1",fontWeight:700,marginBottom:4,display:"block"}}>種別</label>
               <select style={S.input} value={result.documentType||"納品書"} onChange={e=>setResult({...result,documentType:e.target.value})}>
@@ -2252,7 +2277,7 @@ function AISupportView() {
 }
 
 
-function AIInputView({ recipes, setRecipes, inventory, setInventory, suppliers, notify }) {
+function AIInputView({ recipes, setRecipes, inventory, setInventory, suppliers, setSuppliers, notify }) {
   const [tab, setTab] = useState("recipe");
   return (
     <div style={{padding:"16px",maxWidth:800,margin:"0 auto"}}>
@@ -2268,7 +2293,7 @@ function AIInputView({ recipes, setRecipes, inventory, setInventory, suppliers, 
       <div style={{background:"#0f0f1e",border:"1px solid #1e1e2e",borderRadius:12,padding:16,marginBottom:12}}>
         {tab==="recipe"
           ? <RecipeAIPanel recipes={recipes} setRecipes={setRecipes} notify={notify}/>
-          : <SupplierAIPanel inventory={inventory} setInventory={setInventory} suppliers={suppliers} notify={notify}/>}
+          : <SupplierAIPanel inventory={inventory} setInventory={setInventory} suppliers={suppliers} setSuppliers={setSuppliers} notify={notify}/>}
       </div>
       <div style={{background:"#0d1117",border:"1px solid #1f2937",borderRadius:10,padding:14}}>
         <div style={{color:"#6b7280",fontSize:11,marginBottom:8,fontWeight:700}}>現在の登録状況</div>
@@ -3088,10 +3113,12 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
   });
   const [stocktake, setStocktake] = useState({});
   const lowStock = inventory.filter(i=>i.stock<=i.minStock);
-  const cats = [...new Set(inventory.map(i=>i.category))];
+  const cats = [...new Set(inventory.map(i=>i.category).filter(Boolean))];
   const allStorageGroups = [...new Set((stores || []).flatMap(s => s.storageGroups || []))];
   const storageGroups = (stores || []).find(s => s.id === activeStore)?.storageGroups || allStorageGroups;
   const storageGroupOptions = allStorageGroups.length ? allStorageGroups : ["未設定"];
+  // 既存の保管場所候補（店舗設定＋現在の在庫で使われている値）
+  const storageOpts = [...new Set([...allStorageGroups, ...inventory.map(i=>i.storageGroup).filter(Boolean)])];
 
   const openNew = () => {
     setEditItem(null);
@@ -3185,9 +3212,8 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
             <div style={{gridColumn:"1 / -1"}}>
               <Input label="商品名 *" value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))} placeholder="例: 醤油"/>
             </div>
-            <Input label="カテゴリー" value={form.category} onChange={e=>setForm(p=>({...p,category:e.target.value}))} placeholder="例: 調味料"/>
-            <Select label="保管場所" value={form.storageGroup} onChange={e=>setForm(p=>({...p,storageGroup:e.target.value}))}
-              options={storageGroupOptions.map(g=>({value:g,label:g}))}/>
+            <ComboInput label="カテゴリー" value={form.category} onChange={e=>setForm(p=>({...p,category:e.target.value}))} options={cats} placeholder="選択 または 入力して追加"/>
+            <ComboInput label="保管場所" value={form.storageGroup} onChange={e=>setForm(p=>({...p,storageGroup:e.target.value}))} options={storageOpts} placeholder="選択 または 入力して追加"/>
           </div>
 
           {/* 単位セクション */}
@@ -5839,7 +5865,7 @@ function AppInner() {
           {view==="tasks"     && <TaskManagerView routines={routines} setRoutines={setRoutines} allPrepTasks={allPrepTasks} setAllPrepTasks={setAllPrepTasks} cleanTasks={cleanTasks} setCleanTasks={setCleanTasks} notify={notify} storeFilter={storeFilter} taskCats={taskCats} saveTaskCats={saveTaskCats}/>}
           {view==="ops"       && <OpsView currentUserId={currentUserId} storeFilter={storeFilter} notify={notify} openItems={openItems} setOpenItems={setOpenItems} closeItems={closeItems} setCloseItems={setCloseItems}/>}
           {view==="commission"&& <CommissionView allPrepTasks={allPrepTasks} cleanTasks={cleanTasks} pointConfig={pointConfig} setPointConfig={setPointConfig} currentUserId={currentUserId}/>}
-          {view==="ai_input"   && <AIInputView recipes={recipes} setRecipes={setRecipes} inventory={inventory} setInventory={setInventory} suppliers={suppliers} notify={notify}/>}
+          {view==="ai_input"   && <AIInputView recipes={recipes} setRecipes={setRecipes} inventory={inventory} setInventory={setInventory} suppliers={suppliers} setSuppliers={setSuppliers} notify={notify}/>}
           {view==="ai_analysis"&& <AIAnalysisView inventory={inventory} orders={orders} allPrepTasks={allPrepTasks} cleanTasks={cleanTasks} recipes={recipes} suppliers={suppliers} storeFilter={storeFilter} notify={notify}/>}
           {view==="billing"    && <BillingView notify={notify}/>}
           {view==="ai_support" && <AISupportView/>}
