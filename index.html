@@ -77,11 +77,15 @@ const api = {
     });
     if (!res.ok) {
       let message = `API Error: ${res.status}`;
+      let payload = null;
       try {
-        const payload = await res.json();
+        payload = await res.json();
         if (payload?.error) message = payload.error.message || payload.error;
       } catch {}
-      throw new Error(message);
+      const e = new Error(message);
+      e.status = res.status;   // 呼び出し側がHTTPステータスで判定できるように
+      e.payload = payload;     // 409競合時のサーバー最新データ等
+      throw e;
     }
     if (res.status === 204) return null;
     return res.json();
@@ -104,7 +108,7 @@ const api = {
   app: {
     bootstrap: () => api._fetch(`/bootstrap`),
     reset: () => api._fetch(`/bootstrap/reset`, { method: "POST" }),
-    saveState: (resource, data) => api._fetch(`/state/${resource}`, { method: "PUT", body: JSON.stringify({ data }) }),
+    saveState: (resource, data, baseVersion) => api._fetch(`/state/${resource}`, { method: "PUT", body: JSON.stringify({ data, baseVersion }) }),
   },
 
   settings: {
@@ -5127,17 +5131,36 @@ function BillingView({ notify }) {
 
 // ─── MAIN APP ───
 
-function useRemoteStateSync(enabled, resource, data, notify) {
+function useRemoteStateSync(enabled, resource, data, notify, versionsRef, applyServer) {
   const timerRef = useRef(null);
+  const lastJsonRef = useRef(undefined); // 直近サーバー反映済みのJSON。初回(ロード直後)は保存しない
 
   useEffect(() => {
     if (!enabled) return undefined;
+    const json = JSON.stringify(data ?? []);
+    // ロード直後の初回レンダーはスナップショットを取るだけで保存しない（無駄な上書き防止）
+    if (lastJsonRef.current === undefined) { lastJsonRef.current = json; return undefined; }
+    // 実際に変化がなければ何もしない
+    if (lastJsonRef.current === json) return undefined;
 
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
-      api.app.saveState(resource, data).catch((error) => {
-        console.error(`Failed to persist ${resource}:`, error);
-        notify(`「${resource}」の保存に失敗しました`, "warn");
+      const base = versionsRef?.current?.[resource];
+      api.app.saveState(resource, data, base).then((resp) => {
+        if (resp?.version && versionsRef?.current) versionsRef.current[resource] = resp.version;
+        lastJsonRef.current = json;
+      }).catch((error) => {
+        if (error?.status === 409 && error.payload) {
+          // 別端末が先に更新 → 自分の古い内容で上書きせず、サーバー最新を取り込む
+          if (versionsRef?.current) versionsRef.current[resource] = error.payload.currentVersion;
+          const serverData = error.payload.data ?? [];
+          lastJsonRef.current = JSON.stringify(serverData);
+          if (applyServer) applyServer(resource, serverData);
+          notify(`「${resource}」は別の端末で更新されたため最新を反映しました`, "warn");
+        } else {
+          console.error(`Failed to persist ${resource}:`, error);
+          notify(`「${resource}」の保存に失敗しました`, "warn");
+        }
       });
     }, 400);
 
@@ -5238,6 +5261,7 @@ function AppInner() {
   const [bootstrapError, setBootstrapError] = useState("");
   const [lastCarryDate, setLastCarryDate] = useState(null);
   const syncEnabledRef = useRef(false);
+  const versionsRef = useRef({}); // resource→version(updated_at)。楽観的ロック用
 
   // ── ログインハンドラ ──
   const handleLogin = (userId, storeId, token) => {
@@ -5354,6 +5378,19 @@ function AppInner() {
     setHqTasks(data?.hqTasks || []);
     setPointConfig(data?.pointConfig || DEFAULT_POINT_CONFIG);
     setLastCarryDate(data?.lastCarryDate || null);
+    versionsRef.current = data?.versions || {}; // 各リソースのバージョンを記録
+  };
+
+  // 409競合時にサーバー最新を画面へ反映するための resource→setter
+  const applyServer = (resource, serverData) => {
+    const setters = {
+      stores:setStores, users:setUsers, suppliers:setSuppliers, inventory:setInventory,
+      priceHistory:setPriceHistory, orders:setOrders, recipes:setRecipes, routines:setRoutines,
+      prepTasks:setAllPrepTasks, cleanTasks:setCleanTasks, openItems:setOpenItems,
+      closeItems:setCloseItems, taskCats:setTaskCats, hqTasks:setHqTasks,
+    };
+    const s = setters[resource];
+    if (s) s(serverData ?? []);
   };
 
   const loadAppData = async () => {
@@ -5366,8 +5403,10 @@ function AppInner() {
       syncEnabledRef.current = true;
     } catch (e) {
       console.error("Failed to bootstrap app data:", e);
-      if (String(e?.message||e).includes("401")) {
-        // トークン期限切れ → ログイン画面へ
+      const msg = String(e?.message||e);
+      const isAuth = e?.status === 401 || e?.status === 403 || msg.includes("401") || msg.includes("トークン");
+      if (isAuth) {
+        // トークン期限切れ・無効 → ログイン画面へ
         api.setAuthToken(null);
         try { localStorage.removeItem("mise_auth"); } catch {}
         setCurrentUserId(null); setSelectedStoreId(null); setIsLoggedIn(false);
@@ -5414,22 +5453,22 @@ function AppInner() {
   }, []);
 
   const syncEnabled = !isBootstrapping && syncEnabledRef.current;
-  useRemoteStateSync(syncEnabled, "stores", stores, notify);
-  useRemoteStateSync(syncEnabled, "users", users, notify);
-  useRemoteStateSync(syncEnabled, "suppliers", suppliers, notify);
-  useRemoteStateSync(syncEnabled, "inventory", inventory, notify);
-  useRemoteStateSync(syncEnabled, "priceHistory", priceHistory, notify);
-  useRemoteStateSync(syncEnabled, "orders", orders, notify);
-  useRemoteStateSync(syncEnabled, "recipes", recipes, notify);
-  useRemoteStateSync(syncEnabled, "routines", routines, notify);
-  useRemoteStateSync(syncEnabled, "prepTasks", allPrepTasks, notify);
-  useRemoteStateSync(syncEnabled, "cleanTasks", cleanTasks, notify);
-  useRemoteStateSync(syncEnabled, "taskCats", taskCats, notify);
-  useRemoteStateSync(syncEnabled, "openItems", openItems, notify);
-  useRemoteStateSync(syncEnabled, "closeItems", closeItems, notify);
-  useRemoteStateSync(syncEnabled, "hqTasks", hqTasks, notify);
-  useRemoteStateSync(syncEnabled, "pointConfig", pointConfig, notify);
-  useRemoteStateSync(syncEnabled && lastCarryDate !== undefined, "lastCarryDate", lastCarryDate, notify);
+  useRemoteStateSync(syncEnabled, "stores", stores, notify, versionsRef, applyServer);
+  useRemoteStateSync(syncEnabled, "users", users, notify, versionsRef, applyServer);
+  useRemoteStateSync(syncEnabled, "suppliers", suppliers, notify, versionsRef, applyServer);
+  useRemoteStateSync(syncEnabled, "inventory", inventory, notify, versionsRef, applyServer);
+  useRemoteStateSync(syncEnabled, "priceHistory", priceHistory, notify, versionsRef, applyServer);
+  useRemoteStateSync(syncEnabled, "orders", orders, notify, versionsRef, applyServer);
+  useRemoteStateSync(syncEnabled, "recipes", recipes, notify, versionsRef, applyServer);
+  useRemoteStateSync(syncEnabled, "routines", routines, notify, versionsRef, applyServer);
+  useRemoteStateSync(syncEnabled, "prepTasks", allPrepTasks, notify, versionsRef, applyServer);
+  useRemoteStateSync(syncEnabled, "cleanTasks", cleanTasks, notify, versionsRef, applyServer);
+  useRemoteStateSync(syncEnabled, "taskCats", taskCats, notify, versionsRef, applyServer);
+  useRemoteStateSync(syncEnabled, "openItems", openItems, notify, versionsRef, applyServer);
+  useRemoteStateSync(syncEnabled, "closeItems", closeItems, notify, versionsRef, applyServer);
+  useRemoteStateSync(syncEnabled, "hqTasks", hqTasks, notify, versionsRef, applyServer);
+  useRemoteStateSync(syncEnabled, "pointConfig", pointConfig, notify, versionsRef, applyServer);
+  useRemoteStateSync(syncEnabled && lastCarryDate !== undefined, "lastCarryDate", lastCarryDate, notify, versionsRef, applyServer);
 
   INITIAL_USERS = users;
   INITIAL_STORES = stores; // 全コンポーネントのUSERS参照を最新stateに同期
@@ -5523,7 +5562,13 @@ function AppInner() {
         <div style={{maxWidth:420,width:"100%",background:"#0c0c18",border:"1px solid #2a2a3a",borderRadius:16,padding:24,textAlign:"center"}}>
           <div style={{fontSize:18,fontWeight:800,marginBottom:10}}>API接続エラー</div>
           <div style={{fontSize:13,color:"#8b95a1",lineHeight:1.7,marginBottom:18}}>{bootstrapError}</div>
-          <Btn onClick={loadAppData}>再読み込み</Btn>
+          <div style={{display:"flex",gap:10,justifyContent:"center"}}>
+            <Btn onClick={loadAppData}>再読み込み</Btn>
+            <button onClick={()=>{ api.setAuthToken(null); try{localStorage.removeItem("mise_auth");}catch{} setCurrentUserId(null); setSelectedStoreId(null); setBootstrapError(""); setIsLoggedIn(false); }}
+              style={{padding:"9px 18px",background:"#1a1a2e",border:"1px solid #2a2a3a",color:"#c7d0db",borderRadius:9,fontSize:12,fontWeight:700,cursor:"pointer"}}>
+              ログイン画面へ
+            </button>
+          </div>
         </div>
       </div>
     );
