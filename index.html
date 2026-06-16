@@ -5083,9 +5083,18 @@ function BillingView({ notify }) {
       price: "¥9,980",
       period: "月額（税別）",
       color: "#6D28D9",
-      features: ["店舗数無制限", "スタッフ無制限", "全SOLO機能", "本部ダッシュボード", "店舗間比較レポート", "優先サポート"],
+      features: ["3店舗まで", "スタッフ無制限", "全SOLO機能", "本部ダッシュボード", "店舗間比較レポート", "優先サポート"],
       cta: "CHAINプランを始める",
       popular: true,
+    },
+    {
+      id: "group",
+      name: "GROUP",
+      price: "¥19,800",
+      period: "月額（税別）",
+      color: "#0077B6",
+      features: ["4店舗以上（店舗数無制限）", "スタッフ無制限", "全CHAIN機能", "店舗間メニュー・在庫コピー", "全店舗一括管理", "専任サポート"],
+      cta: "GROUPプランを始める",
     },
   ];
 
@@ -5146,7 +5155,7 @@ function BillingView({ notify }) {
       )}
 
       {/* Plan Cards */}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:16}}>
         {plans.map(plan => (
           <div key={plan.id} style={{background:"#0c0c18",border:plan.popular ? "2px solid " + plan.color : "1px solid #1e1e2e",borderRadius:16,padding:24,position:"relative"}}>
             {plan.popular && (
@@ -5592,6 +5601,17 @@ function AppInner() {
     {id:"ai_support", label:"AIサポート",             icon:"💬"},
   ];
 
+  // ロール別メニュー表示
+  //   本部=全部 / 店長=プラン・請求のみ非表示 / スタッフ=プラン・請求・評価・AI分析・AI自動入力 を非表示
+  const roleHide = {
+    "店長":     ["billing"],
+    "スタッフ":   ["billing","commission","ai_analysis","ai_input"],
+    "アルバイト": ["billing","commission","ai_analysis","ai_input"],
+  };
+  const myRole = currentUser?.role;
+  const hiddenTabs = (myRole && myRole!=="本部") ? (roleHide[myRole] || []) : [];
+  const visibleTabs = tabs.filter(t=>!hiddenTabs.includes(t.id));
+
   const getBadge = id => {
     if (id==="inventory" && lowStockCount>0) return lowStockCount;
     if (id==="order" && (pendingOrderCount>0||lowStockCount>0)) return pendingOrderCount+lowStockCount;
@@ -5831,7 +5851,7 @@ function AppInner() {
             padding:sideOpen?"14px 0":0,overflowY:sideOpen?"auto":"hidden",overflowX:"hidden",
             background:"#07070f",flexShrink:0,transition:"width .25s ease"
           }}>
-          {tabs.map(t=>{
+          {visibleTabs.map(t=>{
             const badge = getBadge(t.id);
             return (
               <button key={t.id} onClick={()=>{setView(t.id); if(window.innerWidth<900)setSideOpen(false);}}
