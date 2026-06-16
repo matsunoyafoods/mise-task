@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>MISE TASK｜飲食店のオペレーションを、まるごと管理。</title>
+<meta name="description" content="MISE TASKは飲食店の仕込み・クリーン・在庫・発注・開閉店チェックをまとめて管理するクラウドサービス。AIが請求書やレシピを自動入力。1店舗から多店舗チェーンまで。"/>
+<link rel="icon" href="icon.png" type="image/png"/>
+<link rel="apple-touch-icon" href="icon.png"/>
+<meta property="og:title" content="MISE TASK｜飲食店のオペレーションを、まるごと管理。"/>
+<meta property="og:description" content="仕込み・在庫・発注・開閉店チェックをひとつに。AI自動入力で現場の入力作業をゼロに近づける飲食店向け管理SaaS。"/>
+<meta property="og:type" content="website"/>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;800&display=swap" rel="stylesheet"/>
+<style>
+  :root{
+    --orange:#E85D04; --orange2:#F48C06; --purple:#6D28D9; --blue:#0077B6;
+    --ink:#15151f; --gray:#5b6472; --line:#eceef2; --bg:#ffffff; --soft:#f7f8fb;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html{scroll-behavior:smooth;}
+  body{font-family:'Noto Sans JP',sans-serif;color:var(--ink);background:var(--bg);line-height:1.7;-webkit-font-smoothing:antialiased;}
+  a{color:inherit;text-decoration:none;}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 20px;}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:14px 26px;border-radius:12px;font-weight:700;font-size:15px;cursor:pointer;border:none;transition:transform .12s ease,box-shadow .12s ease;}
+  .btn-primary{background:linear-gradient(135deg,var(--orange),var(--orange2));color:#fff;box-shadow:0 8px 24px rgba(232,93,4,.28);}
+  .btn-primary:hover{transform:translateY(-2px);}
+  .btn-ghost{background:#fff;color:var(--ink);border:1.5px solid var(--line);}
+  .btn-ghost:hover{border-color:var(--orange);color:var(--orange);}
+  .eyebrow{display:inline-block;font-size:12px;font-weight:700;letter-spacing:.12em;color:var(--orange);background:#fff3ea;padding:5px 12px;border-radius:20px;margin-bottom:18px;}
+  h2.sec{font-size:clamp(24px,4vw,34px);font-weight:800;letter-spacing:.01em;text-align:center;}
+  .sec-sub{text-align:center;color:var(--gray);margin-top:10px;margin-bottom:44px;font-size:15px;}
+
+  /* header */
+  header{position:sticky;top:0;background:rgba(255,255,255,.86);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);z-index:50;}
+  .nav{display:flex;align-items:center;justify-content:space-between;height:64px;}
+  .logo{display:flex;align-items:center;gap:10px;font-weight:800;letter-spacing:.06em;}
+  .logo .mark{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--orange),var(--orange2));display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;}
+  .nav-links{display:flex;align-items:center;gap:26px;font-size:14px;color:var(--gray);font-weight:500;}
+  .nav-links a:hover{color:var(--ink);}
+  .nav .btn{padding:10px 18px;font-size:14px;}
+  @media(max-width:720px){.nav-links a:not(.navcta){display:none;}}
+
+  /* hero */
+  .hero{padding:72px 0 56px;background:radial-gradient(1200px 400px at 70% -50px,#fff3ea 0,#fff 60%);}
+  .hero-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:48px;align-items:center;}
+  @media(max-width:860px){.hero-grid{grid-template-columns:1fr;gap:32px;}}
+  .hero h1{font-size:clamp(30px,5.2vw,50px);font-weight:800;line-height:1.25;letter-spacing:.01em;}
+  .hero h1 .hl{color:var(--orange);}
+  .hero p.lead{margin-top:20px;font-size:17px;color:var(--gray);}
+  .hero .cta-row{margin-top:32px;display:flex;gap:14px;flex-wrap:wrap;}
+  .hero .note{margin-top:14px;font-size:12.5px;color:#9aa3b0;}
+  /* hero mock */
+  .mock{background:#0c0c18;border-radius:18px;padding:14px;box-shadow:0 30px 60px rgba(20,20,40,.18);border:1px solid #1e1e2e;}
+  .mock .bar{display:flex;gap:6px;margin-bottom:12px;}
+  .mock .bar i{width:10px;height:10px;border-radius:50%;display:block;}
+  .mock-row{display:flex;align-items:center;gap:10px;background:#12121f;border:1px solid #1e1e2e;border-radius:10px;padding:11px 13px;margin-bottom:8px;}
+  .mock-row .dot{width:18px;height:18px;border-radius:6px;flex-shrink:0;}
+  .mock-row .t{flex:1;height:9px;border-radius:5px;background:#2a2a3a;}
+  .mock-row .t.s{width:60%;}
+  .mock-row .chk{font-size:13px;color:#4ade80;}
+
+  /* logos / stats */
+  .stats{display:flex;justify-content:center;gap:48px;flex-wrap:wrap;padding:34px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin-top:56px;}
+  .stat{text-align:center;}
+  .stat b{display:block;font-size:30px;font-weight:800;color:var(--ink);}
+  .stat span{font-size:13px;color:var(--gray);}
+
+  /* pain */
+  section{padding:72px 0;}
+  .pain-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;}
+  @media(max-width:760px){.pain-grid{grid-template-columns:1fr;}}
+  .pain-card{background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:24px;}
+  .pain-card .em{font-size:26px;}
+  .pain-card h3{font-size:16px;margin:10px 0 6px;font-weight:700;}
+  .pain-card p{font-size:14px;color:var(--gray);}
+
+  /* features */
+  .feat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;}
+  @media(max-width:900px){.feat-grid{grid-template-columns:repeat(2,1fr);}}
+  @media(max-width:600px){.feat-grid{grid-template-columns:1fr;}}
+  .feat{border:1px solid var(--line);border-radius:16px;padding:26px 22px;transition:box-shadow .15s ease,transform .15s ease;background:#fff;}
+  .feat:hover{box-shadow:0 16px 40px rgba(20,20,40,.08);transform:translateY(-3px);}
+  .feat .ic{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;margin-bottom:14px;background:#fff3ea;}
+  .feat h3{font-size:16px;font-weight:700;margin-bottom:8px;}
+  .feat p{font-size:14px;color:var(--gray);}
+
+  /* AI highlight */
+  .ai{background:linear-gradient(135deg,#1a1030,#0c0c18);color:#fff;border-radius:22px;padding:48px;display:grid;grid-template-columns:1fr 1fr;gap:36px;align-items:center;}
+  @media(max-width:760px){.ai{grid-template-columns:1fr;padding:32px;}}
+  .ai .eyebrow{background:#2a1846;color:#c4a7ff;}
+  .ai h2{font-size:clamp(22px,3.4vw,30px);font-weight:800;line-height:1.35;}
+  .ai p{color:#b9b3cf;margin-top:14px;font-size:15px;}
+  .ai .steps{display:flex;flex-direction:column;gap:12px;}
+  .ai .step{display:flex;gap:12px;align-items:flex-start;background:#16122a;border:1px solid #2a2440;border-radius:12px;padding:14px 16px;}
+  .ai .step b{color:#fff;font-size:14px;}
+  .ai .step span{color:#9b94b8;font-size:13px;}
+  .ai .num{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,var(--orange),var(--orange2));color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0;}
+
+  /* pricing */
+  .price-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;align-items:stretch;}
+  @media(max-width:820px){.price-grid{grid-template-columns:1fr;max-width:420px;margin:0 auto;}}
+  .plan{border:1.5px solid var(--line);border-radius:18px;padding:30px 26px;display:flex;flex-direction:column;background:#fff;position:relative;}
+  .plan.pop{border-color:var(--purple);box-shadow:0 18px 44px rgba(109,40,217,.14);}
+  .plan .tag{position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:var(--purple);color:#fff;font-size:11px;font-weight:700;padding:4px 14px;border-radius:20px;}
+  .plan .pname{font-size:15px;font-weight:800;letter-spacing:.08em;}
+  .plan .pprice{font-size:34px;font-weight:800;margin:10px 0 2px;}
+  .plan .pprice small{font-size:13px;color:var(--gray);font-weight:500;}
+  .plan ul{list-style:none;margin:18px 0 24px;display:flex;flex-direction:column;gap:10px;}
+  .plan li{font-size:13.5px;color:#3a4250;display:flex;gap:8px;align-items:flex-start;}
+  .plan li::before{content:"✓";color:#16a34a;font-weight:700;}
+  .plan .btn{margin-top:auto;width:100%;}
+
+  /* CTA band */
+  .cta-band{background:linear-gradient(135deg,var(--orange),var(--orange2));border-radius:24px;padding:52px 40px;text-align:center;color:#fff;}
+  .cta-band h2{font-size:clamp(24px,4vw,32px);font-weight:800;}
+  .cta-band p{margin-top:12px;opacity:.95;font-size:15px;}
+  .cta-band .cta-row{margin-top:26px;display:flex;gap:14px;justify-content:center;flex-wrap:wrap;}
+  .cta-band .btn-ghost{background:rgba(255,255,255,.12);color:#fff;border-color:rgba(255,255,255,.5);}
+  .cta-band .btn-ghost:hover{background:rgba(255,255,255,.2);color:#fff;}
+  .cta-band .btn-white{background:#fff;color:var(--orange);}
+
+  /* faq */
+  .faq{max-width:760px;margin:0 auto;}
+  details{border:1px solid var(--line);border-radius:12px;padding:4px 18px;margin-bottom:10px;background:#fff;}
+  summary{cursor:pointer;font-weight:700;font-size:15px;padding:14px 0;list-style:none;display:flex;justify-content:space-between;align-items:center;}
+  summary::-webkit-details-marker{display:none;}
+  summary::after{content:"＋";color:var(--orange);font-weight:700;}
+  details[open] summary::after{content:"−";}
+  details p{padding:0 0 16px;color:var(--gray);font-size:14px;}
+
+  /* footer */
+  footer{border-top:1px solid var(--line);padding:40px 0;color:var(--gray);font-size:13px;}
+  .foot{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <a href="#" class="logo"><img src="logo.png" alt="MISE TASK" style="height:36px;width:auto;display:block"/></a>
+    <nav class="nav-links">
+      <a href="#features">機能</a>
+      <a href="#pricing">料金</a>
+      <a href="#faq">よくある質問</a>
+      <a class="navcta btn btn-primary" href="https://mise-task.vercel.app">無料でデモを試す</a>
+    </nav>
+  </div>
+</header>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <span class="eyebrow">飲食店オペレーション管理 SaaS</span>
+      <h1>店舗の「やること」を、<br/><span class="hl">ひとつのアプリ</span>に。</h1>
+      <p class="lead">仕込み・クリーン・在庫・発注・開閉店チェックまで、現場のオペレーションをまるごと管理。AIが請求書やレシピを読み取って自動入力。1店舗から多店舗チェーンまで対応します。</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="https://mise-task.vercel.app">無料でデモを試す →</a>
+        <a class="btn btn-ghost" href="#pricing">料金プランを見る</a>
+      </div>
+      <p class="note">クレジットカード不要 ／ デモはそのまま画面を触って体験できます</p>
+    </div>
+    <div class="mock" aria-hidden="true">
+      <div class="bar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div>
+      <div class="mock-row"><span class="dot" style="background:#E85D04"></span><span class="t"></span><span class="chk">✓</span></div>
+      <div class="mock-row"><span class="dot" style="background:#C9184A"></span><span class="t s"></span><span class="chk">✓</span></div>
+      <div class="mock-row"><span class="dot" style="background:#0077B6"></span><span class="t"></span></div>
+      <div class="mock-row"><span class="dot" style="background:#E85D04"></span><span class="t s"></span></div>
+      <div class="mock-row"><span class="dot" style="background:#6D28D9"></span><span class="t"></span><span class="chk">✓</span></div>
+    </div>
+  </div>
+  <div class="wrap">
+    <div class="stats">
+      <div class="stat"><b>5分</b><span>でその日の仕込みを共有</span></div>
+      <div class="stat"><b>写真1枚</b><span>でレシピ・仕入れを自動登録</span></div>
+      <div class="stat"><b>多店舗</b><span>を本部からまとめて管理</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- PAIN -->
+<section>
+  <div class="wrap">
+    <h2 class="sec">こんな「現場のバラバラ」、ありませんか？</h2>
+    <p class="sec-sub">紙・口頭・LINE・記憶に頼った運用は、抜け漏れと属人化のもとになります。</p>
+    <div class="pain-grid">
+      <div class="pain-card"><div class="em">📝</div><h3>仕込み・掃除が口頭頼み</h3><p>「今日の仕込み何だっけ？」が毎日発生。新人に毎回教えるのも一苦労。</p></div>
+      <div class="pain-card"><div class="em">📦</div><h3>在庫・発注が属人化</h3><p>担当者しか分からない発注。欠品や頼みすぎ、二重発注が起きがち。</p></div>
+      <div class="pain-card"><div class="em">🏪</div><h3>多店舗で同じ作業を何度も</h3><p>店舗ごとに同じ食材・業者を登録し直し。本部から状況が見えない。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section id="features" style="background:var(--soft);">
+  <div class="wrap">
+    <h2 class="sec">MISE TASK でできること</h2>
+    <p class="sec-sub">現場のオペレーションに必要な機能を、ひとつにまとめました。</p>
+    <div class="feat-grid">
+      <div class="feat"><div class="ic">🔪</div><h3>仕込み・クリーン・タスク管理</h3><p>ルーティンも単発タスクも。担当を割り当て、その日のやることを一目で共有。</p></div>
+      <div class="feat"><div class="ic">📦</div><h3>在庫・発注管理</h3><p>在庫不足を自動検知し、業者ごとにまとめて発注。LINE・メールなど受注方法も柔軟。</p></div>
+      <div class="feat"><div class="ic">🤖</div><h3>AI自動入力</h3><p>レシピや請求書を写真・PDFで撮るだけ。AIが商品名・単価を読み取って自動登録。</p></div>
+      <div class="feat"><div class="ic">🏪</div><h3>開店・閉店チェック</h3><p>キッチン／ホールで帯分けしたチェックリスト。完了は店長承認で記録に残る。</p></div>
+      <div class="feat"><div class="ic">📱</div><h3>店頭QRでスタッフログイン</h3><p>マイページ不要。店頭のQRを読むだけ。時限式だから店外からは開けず安心。</p></div>
+      <div class="feat"><div class="ic">◈</div><h3>評価・コミッション</h3><p>タスク完了でポイント付与。がんばりを見える化して、評価や手当に活用。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- AI highlight -->
+<section>
+  <div class="wrap">
+    <div class="ai">
+      <div>
+        <span class="eyebrow">AI 自動入力</span>
+        <h2>「入力がめんどくさい」を、<br/>AIがなくす。</h2>
+        <p>手書きの仕込み表も、業者から届く請求書も、写真やPDFを添付するだけ。AIが中身を読み取り、レシピや仕入れ商品としてそのまま登録します。現場の入力作業を限りなくゼロに。</p>
+      </div>
+      <div class="steps">
+        <div class="step"><span class="num">1</span><div><b>撮る・添付する</b><br/><span>請求書やレシピを写真かPDFでアップ</span></div></div>
+        <div class="step"><span class="num">2</span><div><b>AIが読み取る</b><br/><span>商品名・単価・分量を自動で抽出</span></div></div>
+        <div class="step"><span class="num">3</span><div><b>確認して登録</b><br/><span>内容をチェックしてワンタップで反映</span></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PRICING -->
+<section id="pricing" style="background:var(--soft);">
+  <div class="wrap">
+    <h2 class="sec">料金プラン</h2>
+    <p class="sec-sub">店舗数に合わせて選べる、シンプルな月額制。（価格は税別）</p>
+    <div class="price-grid">
+      <div class="plan">
+        <div class="pname" style="color:var(--orange)">SOLO</div>
+        <div class="pprice">¥4,980<small> / 月</small></div>
+        <ul>
+          <li>1店舗</li><li>スタッフ10名まで</li><li>在庫・発注管理</li>
+          <li>仕込み・クリーン管理</li><li>AIサポート</li><li>LINE発注連携</li>
+        </ul>
+        <a class="btn btn-ghost" href="#contact">このプランで相談する</a>
+      </div>
+      <div class="plan pop">
+        <div class="tag">人気</div>
+        <div class="pname" style="color:var(--purple)">CHAIN</div>
+        <div class="pprice">¥9,980<small> / 月</small></div>
+        <ul>
+          <li>3店舗まで</li><li>スタッフ無制限</li><li>全SOLO機能</li>
+          <li>本部ダッシュボード</li><li>店舗間比較レポート</li><li>優先サポート</li>
+        </ul>
+        <a class="btn btn-primary" href="#contact">このプランで相談する</a>
+      </div>
+      <div class="plan">
+        <div class="pname" style="color:var(--blue)">GROUP</div>
+        <div class="pprice">¥19,800<small> / 月</small></div>
+        <ul>
+          <li>4店舗以上（店舗数無制限）</li><li>スタッフ無制限</li><li>全CHAIN機能</li>
+          <li>店舗間メニュー・在庫コピー</li><li>全店舗一括管理</li><li>専任サポート</li>
+        </ul>
+        <a class="btn btn-ghost" href="#contact">このプランで相談する</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA band -->
+<section id="contact">
+  <div class="wrap">
+    <div class="cta-band">
+      <h2>まずは無料で、触って試してください。</h2>
+      <p>デモ画面はそのまま操作できます。導入のご相談・お申し込みはお気軽にどうぞ。</p>
+      <div class="cta-row">
+        <a class="btn btn-white" href="https://mise-task.vercel.app">無料でデモを試す</a>
+        <a class="btn btn-ghost" href="mailto:matsuzaki@matsunoyafoods.com?subject=MISE%20TASK%20導入相談">相談・申し込みをする</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section id="faq" style="padding-top:24px;">
+  <div class="wrap faq">
+    <h2 class="sec">よくある質問</h2>
+    <p class="sec-sub">&nbsp;</p>
+    <details><summary>ラーメン店以外でも使えますか？</summary><p>はい。MISE TASK は飲食店全般向けのオペレーション管理サービスです。居酒屋・カフェ・定食店・多店舗チェーンなど、業態を問わずご利用いただけます。</p></details>
+    <details><summary>スタッフはアプリのインストールやアカウント登録が必要ですか？</summary><p>不要です。スタッフは店頭に表示したQRコードを自分のスマホで読み取り、名前を選んでPINでログインするだけ。マイページ登録もアプリのインストールも要りません。</p></details>
+    <details><summary>導入にどれくらい手間がかかりますか？</summary><p>レシピや仕入れの請求書はAIが写真・PDFから自動で読み取って登録できるので、初期登録の手間を大きく減らせます。多店舗の場合は1店舗分を作って他店舗へコピーも可能です。</p></details>
+    <details><summary>複数店舗をまとめて管理できますか？</summary><p>はい。CHAIN（3店舗まで）・GROUP（4店舗以上・無制限）プランで、本部からの一括管理や店舗間のデータコピーに対応します。</p></details>
+    <details><summary>データは安全ですか？</summary><p>通信はすべて暗号化（HTTPS）、ログインはトークン認証、パスワードはハッシュ化して保存しています。権限ごとに見られる画面も分かれています。</p></details>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot">
+    <img src="logo.png" alt="MISE TASK" style="height:30px;width:auto"/>
+    <div>© 2026 松之屋フーズ ／ <a href="mailto:matsuzaki@matsunoyafoods.com" style="color:var(--orange)">お問い合わせ</a></div>
+  </div>
+</footer>
+
+</body>
+</html>
