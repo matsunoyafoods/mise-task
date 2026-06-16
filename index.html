@@ -99,6 +99,10 @@ const api = {
     loginByPin: (tenantId, storeId, userId, pin) => api._fetch(`/auth/pin-login`, { method: "POST", body: JSON.stringify({ tenantId, storeId, userId, pin }) }),
     // 本部ログイン（メール+パスワード） → {token, userId}
     loginHonbu: (email, password) => api._fetch(`/auth/honbu-login`, { method: "POST", body: JSON.stringify({ email, password }) }),
+    // 店長ログイン（メール+パスワード） → {token, userId, user, storeId, tenantId}
+    loginManager: (email, password) => api._fetch(`/auth/manager-login`, { method: "POST", body: JSON.stringify({ email, password }) }),
+    // 店長の認証情報を設定（本部/店長のみ）
+    setCredentials: (userId, email, password) => api._fetch(`/users/set-credentials`, { method: "POST", body: JSON.stringify({ userId, email, password }) }),
     // 店舗タブレットが短命QRを発行（要ログイン: 店長/本部） → {qrToken, expiresAt}
     issueQr: (storeId) => api._fetch(`/qr/issue`, { method: "POST", body: JSON.stringify({ storeId }) }),
     // スタッフ携帯がQRトークンでログイン（公開） → {storeId, storeName, tenantId, users}
@@ -1767,18 +1771,20 @@ function StaffView({users, setUsers, stores, setStores, storeFilter, notify, res
   });
   const openEdit = (u) => setEditForm({...u});
 
-  const save = () => {
+  const save = async () => {
     if (!editForm.name.trim()) { notify("名前を入力してください","warn"); return; }
-    if (editForm._isNew) {
-      const newId = Math.max(...users.map(u=>u.id)) + 1;
-      const avatar = editForm.name.trim()[0];
-      setUsers(p=>[...p, {...editForm, id:newId, avatar, _isNew:undefined}]);
-      notify("✓ スタッフを追加しました");
-    } else {
-      const avatar = editForm.name.trim()[0];
-      setUsers(p=>p.map(u=>u.id===editForm.id ? {...editForm, avatar} : u));
-      notify("✓ スタッフ情報を更新しました");
+    const id = editForm._isNew ? (Math.max(0,...users.map(u=>u.id)) + 1) : editForm.id;
+    const avatar = editForm.name.trim()[0];
+    const { _pw, _isNew, ...rest } = editForm;
+    const record = { ...rest, id, avatar };
+    if (editForm._isNew) setUsers(p=>[...p, record]);
+    else setUsers(p=>p.map(u=>u.id===id ? record : u));
+    // 店長のログイン情報（メール＋パスワード）を保存
+    if (editForm.role==="店長" && (editForm.email||"").trim()) {
+      try { await api.auth.setCredentials(id, editForm.email.trim(), _pw||""); }
+      catch(e){ notify(e?.message||"ログイン情報の保存に失敗しました","warn"); }
     }
+    notify(editForm._isNew ? "✓ スタッフを追加しました" : "✓ スタッフ情報を更新しました");
     setEditForm(null);
   };
 
@@ -1837,6 +1843,18 @@ function StaffView({users, setUsers, stores, setStores, storeFilter, notify, res
                   </button>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* 店長ログイン情報 */}
+          {editForm.role==="店長" && (
+            <div style={{marginBottom:18,background:"#0a0a16",border:"1px solid #1e1e2e",borderRadius:10,padding:12}}>
+              <div style={{fontSize:11,color:"#8b95a1",marginBottom:8,fontWeight:700}}>店長ログイン情報（メール＋パスワード）</div>
+              <input type="email" value={editForm.email||""} onChange={e=>setEditForm(p=>({...p,email:e.target.value}))} placeholder="メールアドレス"
+                style={{width:"100%",padding:"9px 12px",background:"#0c0c18",border:"1px solid #2a2a3a",color:"#eee",borderRadius:8,fontSize:13,marginBottom:8}}/>
+              <input type="password" value={editForm._pw||""} onChange={e=>setEditForm(p=>({...p,_pw:e.target.value}))} placeholder={editForm._isNew?"パスワード（4文字以上）":"変更する場合のみ入力"}
+                style={{width:"100%",padding:"9px 12px",background:"#0c0c18",border:"1px solid #2a2a3a",color:"#eee",borderRadius:8,fontSize:13}}/>
+              <div style={{fontSize:10,color:"#7c8794",marginTop:6,lineHeight:1.5}}>このメール＋パスワードで店長がログインできます（ログイン画面の「店長ログイン」）。パスワードは保存後は表示されません。</div>
             </div>
           )}
 
@@ -3122,6 +3140,21 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
   // 単位の候補（定番＋現在の在庫で使われている単位）
   const unitOpts = [...new Set([...ALL_UNITS.filter(u=>u!=="その他"), ...inventory.map(i=>i.unit).filter(Boolean)])];
   const [showBag, setShowBag] = useState(false);
+  const [copyModal, setCopyModal] = useState(false);
+  const [copyTargets, setCopyTargets] = useState({});
+  const copyToStores = () => {
+    const targets = (INITIAL_STORES||[]).filter(s=>s.id!==activeStore && copyTargets[s.id]).map(s=>s.id);
+    if (!targets.length) { notify("コピー先の店舗を選んでください","warn"); return; }
+    const src = inventory.filter(i=>i.storeId===activeStore);
+    const newItems = [];
+    targets.forEach(tid=>{
+      const have = new Set(inventory.filter(i=>i.storeId===tid).map(i=>i.name));
+      src.forEach(it=>{ if(have.has(it.name)) return; newItems.push({...it, id:"inv"+Date.now()+Math.random().toString(36).slice(2,6), storeId:tid}); have.add(it.name); });
+    });
+    if (newItems.length) setInventory(p=>[...p,...newItems]);
+    notify(`✓ ${newItems.length}件を他店舗にコピーしました（重複はスキップ）`);
+    setCopyModal(false); setCopyTargets({});
+  };
 
   const openNew = () => {
     setEditItem(null);
@@ -3198,9 +3231,31 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
         </div>
         <div style={{display:"flex",gap:8}}>
           {!storeFilter && currentUserId !== null && <div style={{display:"flex",gap:6}}>{INITIAL_STORES.map(s=><button key={s.id} onClick={()=>setActiveStore(s.id)} style={{padding:"7px 16px",borderRadius:20,border:"none",cursor:"pointer",fontSize:12,background:activeStore===s.id?"#0077B6":"#1a1a2a",color:activeStore===s.id?"#fff":"#8b95a1"}}>{s.name}</button>)}</div>}
+          {(INITIAL_STORES||[]).length>1 && <Btn onClick={()=>setCopyModal(true)} color="#6D28D9">📋 他店舗にコピー</Btn>}
           <Btn onClick={openNew} color="#0077B6">＋ 商品登録</Btn>
         </div>
       </div>
+
+      {copyModal && (
+        <Modal onClose={()=>setCopyModal(false)} width={380}>
+          <div style={{fontSize:17,fontWeight:800,color:"#fff",marginBottom:6}}>📋 他店舗にコピー</div>
+          <div style={{fontSize:12,color:"#8b95a1",marginBottom:16,lineHeight:1.6}}>
+            「{INITIAL_STORES.find(s=>s.id===activeStore)?.name}」の在庫商品（{inventory.filter(i=>i.storeId===activeStore).length}件）を、選んだ店舗にコピーします。同じ名前の商品は重複させずスキップします。
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
+            {(INITIAL_STORES||[]).filter(s=>s.id!==activeStore).map(s=>(
+              <label key={s.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"#0c0c18",border:"1px solid "+(copyTargets[s.id]?"#6D28D9":"#1e1e2e"),borderRadius:10,cursor:"pointer"}}>
+                <input type="checkbox" checked={!!copyTargets[s.id]} onChange={e=>setCopyTargets(p=>({...p,[s.id]:e.target.checked}))} style={{width:16,height:16}}/>
+                <span style={{fontSize:13,color:"#eee"}}>{s.name}</span>
+              </label>
+            ))}
+          </div>
+          <div style={{display:"flex",gap:10}}>
+            <Btn onClick={()=>setCopyModal(false)} color="#1a1a2e" style={{color:"#8b95a1",flex:1}}>キャンセル</Btn>
+            <Btn onClick={copyToStores} color="#6D28D9" style={{flex:1}}>コピー実行</Btn>
+          </div>
+        </Modal>
+      )}
 
       <div style={{display:"flex",gap:6,marginBottom:18}}>
         {[["stock","在庫一覧"],["stocktake","棚卸し"]].map(([id,label])=>(
@@ -4882,6 +4937,7 @@ function LoginScreen({ onLogin, stores, users }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [qrLoading, setQrLoading] = useState(false);
+  const [authMode, setAuthMode] = useState("honbu"); // "honbu" | "manager"
 
   // 店頭QRをスキャンして開いた場合（?qr=...）→ 店舗を特定してスタッフ選択へ
   useEffect(() => {
@@ -4901,7 +4957,7 @@ function LoginScreen({ onLogin, stores, users }) {
   const handleStoreCode = async () => {
     setError("");
     if (storeCode.toUpperCase() === "HONBU") {
-      setStep("honbu"); // 本部はメール+パスワード
+      setAuthMode("honbu"); setStep("honbu"); // 本部はメール+パスワード
       return;
     }
     try {
@@ -4918,8 +4974,13 @@ function LoginScreen({ onLogin, stores, users }) {
   const handleHonbu = async () => {
     setError("");
     try {
-      const result = await api.auth.loginHonbu(email, password);
-      if (result?.token) onLogin(result.userId, null, result.token);
+      if (authMode === "manager") {
+        const result = await api.auth.loginManager(email, password);
+        if (result?.token) onLogin(result.userId, result.storeId ?? null, result.token);
+      } else {
+        const result = await api.auth.loginHonbu(email, password);
+        if (result?.token) onLogin(result.userId, null, result.token);
+      }
     } catch (e) {
       setError("メールまたはパスワードが違います");
     }
@@ -4968,13 +5029,19 @@ function LoginScreen({ onLogin, stores, users }) {
               style={{width:"100%",marginTop:16,padding:14,background:storeCode ? "linear-gradient(90deg,#E85D04,#F48C06)" : "#1a1a2a",color:"#fff",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:storeCode ? "pointer" : "default"}}>
               次へ
             </button>
+            <div style={{display:"flex",gap:8,marginTop:14}}>
+              <button onClick={()=>{setAuthMode("manager");setEmail("");setPassword("");setError("");setStep("honbu");}}
+                style={{flex:1,padding:10,background:"#12121f",border:"1px solid #2a2a3a",color:"#8b95a1",borderRadius:8,fontSize:12,cursor:"pointer"}}>店長ログイン</button>
+              <button onClick={()=>{setAuthMode("honbu");setEmail("");setPassword("");setError("");setStep("honbu");}}
+                style={{flex:1,padding:10,background:"#12121f",border:"1px solid #2a2a3a",color:"#8b95a1",borderRadius:8,fontSize:12,cursor:"pointer"}}>本部ログイン</button>
+            </div>
           </div>
         )}
 
-        {/* Step 1b: 本部ログイン（メール+パスワード） */}
+        {/* Step 1b: 本部/店長ログイン（メール+パスワード） */}
         {step === "honbu" && (
           <div>
-            <div style={{fontSize:14,fontWeight:700,color:"#fff",marginBottom:16,textAlign:"center"}}>本部ログイン</div>
+            <div style={{fontSize:14,fontWeight:700,color:"#fff",marginBottom:16,textAlign:"center"}}>{authMode==="manager"?"店長ログイン":"本部ログイン"}</div>
             <input
               type="email" value={email} autoFocus
               onChange={e => { setEmail(e.target.value); setError(""); }}
