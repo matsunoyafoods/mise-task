@@ -1302,7 +1302,7 @@ function RecipeAIPanel({ recipes, setRecipes, notify }) {
         { type: isImg ? "image" : "document", source:{ type:"base64", media_type:file.type, data:b64 }},
         { type:"text", text:"この資料からレシピ情報を全て抽出してください。JSONのみ返してください。"}
       ]}];
-      const sys = "ラーメン店舗管理システム用レシピ読み取りAI。資料内に複数のレシピがあれば全て抽出する。\n以下のJSON形式のみ返答。preamble不要。\n{\"recipes\":[{\"name\":\"名前\",\"category\":\"タレ/スープ/トッピング/麺/その他\",\"yield\":\"出来高\",\"description\":\"保存方法や備考\",\"ingredients\":[{\"name\":\"材料\",\"amount\":数値,\"unit\":\"単位\"}],\"steps\":[\"手順1\",\"手順2\"]}]}";
+      const sys = "飲食店舗管理システム用レシピ読み取りAI。資料内に複数のレシピがあれば全て抽出する。\n以下のJSON形式のみ返答。preamble不要。\n{\"recipes\":[{\"name\":\"名前\",\"category\":\"タレ/スープ/トッピング/麺/その他\",\"yield\":\"出来高\",\"description\":\"保存方法や備考\",\"ingredients\":[{\"name\":\"材料\",\"amount\":数値,\"unit\":\"単位\"}],\"steps\":[\"手順1\",\"手順2\"]}]}";
       const parsed = await callAI(messages, sys);
       // 単一/配列/{recipes:[...]} のいずれでも配列に正規化
       let list = Array.isArray(parsed) ? parsed : (parsed.recipes || [parsed]);
@@ -1446,7 +1446,7 @@ function SupplierAIPanel({ inventory, setInventory, suppliers, setSuppliers, not
         { type:"text", text:"この書類から仕入れ情報を抽出してください。JSONのみ返してください。"}
       ]}];
       const supNames = suppliers.map(s=>s.name).join("、");
-      const sys = "ラーメン店舗管理システム用 仕入れ商品読み取りAI。書類から仕入れ商品を抽出し、商品マスタとして登録する。\n重要: 同じ商品名が複数行（複数日付）ある場合は必ず1つにまとめる（重複させない）。数量や合計金額は不要。単価は最新のものを採用。\n以下のJSON形式のみ返答。既知業者: "+supNames+"\n{\"supplierName\":\"業者名\",\"supplierId\":\"\",\"documentDate\":\"YYYY-MM-DD\",\"items\":[{\"name\":\"商品名\",\"unit\":\"単位\",\"unitPrice\":数値}]}";
+      const sys = "飲食店舗管理システム用 仕入れ商品読み取りAI。書類から仕入れ商品を抽出し、商品マスタとして登録する。\n重要: 同じ商品名が複数行（複数日付）ある場合は必ず1つにまとめる（重複させない）。数量や合計金額は不要。単価は最新のものを採用。\n以下のJSON形式のみ返答。既知業者: "+supNames+"\n{\"supplierName\":\"業者名\",\"supplierId\":\"\",\"documentDate\":\"YYYY-MM-DD\",\"items\":[{\"name\":\"商品名\",\"unit\":\"単位\",\"unitPrice\":数値}]}";
       const parsed = await callAI(messages, sys);
       const matched = suppliers.find(s => parsed.supplierName && parsed.supplierName.includes(s.name));
       parsed.supplierId = matched ? matched.id : "";
@@ -2024,7 +2024,7 @@ function StaffView({users, setUsers, stores, setStores, storeFilter, notify, res
 //  AI サポートビュー
 // ══════════════════════════════════════════════════════
 const CHAT_SYSTEM_PROMPT = `あなたはMISE TASKのAIサポートアシスタントです。
-MISE TASKはラーメン店・飲食チェーン向けのオペレーション管理システムです。
+MISE TASKは飲食店・飲食チェーン向けのオペレーション管理システムです。
 
 【料金プラン】
 - SOLO: ¥24,900/月（税抜）・1店舗。AIオプション+¥9,800/月
@@ -5005,7 +5005,7 @@ function LoginScreen({ onLogin, stores, users }) {
         <div style={{textAlign:"center",marginBottom:40}}>
           <div style={{width:56,height:56,background:"linear-gradient(135deg,#E85D04,#F48C06)",borderRadius:16,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:28,color:"#fff",fontWeight:800,marginBottom:12}}>⬡</div>
           <div style={{fontSize:20,fontWeight:800,letterSpacing:".15em",color:"#fff"}}>MISE TASK</div>
-          <div style={{fontSize:11,color:"#E85D04",letterSpacing:".2em",marginTop:4}}>ラーメン店舗管理システム</div>
+          <div style={{fontSize:11,color:"#E85D04",letterSpacing:".2em",marginTop:4}}>飲食店舗管理システム</div>
         </div>
 
         {qrLoading && (
@@ -5325,7 +5325,7 @@ function AIAnalysisView({ inventory, orders, allPrepTasks, cleanTasks, recipes, 
         レシピ数: recipes.length,
         登録業者: suppliers.map(s=>s.name),
       };
-      const sys = "あなたは繁盛ラーメン店の運営アドバイザーです。提供される在庫・仕入れ・仕込みのデータを分析し、効率化と食材ロス削減のための具体的で実行可能なアドバイスを日本語で簡潔に返してください。\n観点: ①在庫過多→発注量・仕込み量の見直し提案 ②欠品リスク→早めの発注提案 ③仕込みの効率化（まとめ仕込み・作り置き・優先順位）④仕入れの最適化（発注頻度・ロット）。\n見出しと箇条書きで、重要なものから3〜6個に絞って。絵文字や記号の装飾は使わない。データが少ない場合はその旨と一般的な助言を述べる。";
+      const sys = "あなたは繁盛飲食店の運営アドバイザーです。提供される在庫・仕入れ・仕込みのデータを分析し、効率化と食材ロス削減のための具体的で実行可能なアドバイスを日本語で簡潔に返してください。\n観点: ①在庫過多→発注量・仕込み量の見直し提案 ②欠品リスク→早めの発注提案 ③仕込みの効率化（まとめ仕込み・作り置き・優先順位）④仕入れの最適化（発注頻度・ロット）。\n見出しと箇条書きで、重要なものから3〜6個に絞って。絵文字や記号の装飾は使わない。データが少ない場合はその旨と一般的な助言を述べる。";
       const messages = [{ role:"user", content:[{ type:"text", text:"次の店舗データを分析してアドバイスをください。\n"+JSON.stringify(summary, null, 1) }]}];
       const res = await fetch(CONFIG.AI_API_URL + "/chat", {
         method:"POST",
@@ -5848,7 +5848,7 @@ function AppInner() {
           <div style={{width:30,height:30,background:"linear-gradient(135deg,#E85D04,#F48C06)",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,color:"#fff",fontWeight:800}}>⬡</div>
           <div>
             <div style={{fontSize:13,fontWeight:800,letterSpacing:".1em",color:"#fff"}}>MISE TASK</div>
-            <div style={{fontSize:9,color:"#E85D04",letterSpacing:".2em"}}>ラーメン店舗管理システム</div>
+            <div style={{fontSize:9,color:"#E85D04",letterSpacing:".2em"}}>飲食店舗管理システム</div>
           </div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",justifyContent:"flex-end"}}>
