@@ -250,6 +250,22 @@ const DEFAULT_ADMIN_PASSWORD = "1234";
 const DEFAULT_TASK_CATS = [];
 const DEFAULT_POINT_CONFIG = { prepDone:10, amountVerified:8, cleanDone:10, deviation:-5 };
 
+// 需要変動（曜日・祝日・イベント）の倍率設定。平日は常に1.0。specialDays=[{date,level,label}]
+const DEFAULT_DEMAND = { weekend:1.5, holiday:1.8, event:2.0, specialDays:[] };
+const DEMAND_LABEL = { weekday:"平日", weekend:"週末", holiday:"祝日", event:"イベント" };
+function dayLevelOf(dateStr, dc){
+  const sp = ((dc&&dc.specialDays)||[]).find(s=>s.date===dateStr);
+  if (sp && sp.level) return sp.level;
+  const d = new Date(dateStr+"T00:00:00").getDay();
+  return (d===0||d===6) ? "weekend" : "weekday";
+}
+function demandMult(dateStr, dc){
+  const lv = dayLevelOf(dateStr, dc);
+  if (lv==="weekday") return 1;
+  const m = Number((dc||{})[lv]);
+  return (m && m>0) ? m : 1;
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // ██  DEMO DATA — API未接続時のデモ用データ（本番ではDBから取得）
 // ═══════════════════════════════════════════════════════════════════════
@@ -2625,7 +2641,64 @@ function CleanView({tasks, setTasks, currentUserId, notify, storeFilter}) {
 }
 
 // ─── ORDER VIEW ───
-function OrderView({inventory, setInventory, suppliers, setSuppliers, orders, setOrders, priceHistory, setPriceHistory, currentUserId, notify, storeFilter}) {
+// 需要設定モーダル（曜日・祝日・イベントの倍率＋特別日カレンダー）
+function DemandSettingsModal({ config, onSave, onClose }) {
+  const [d, setD] = useState({ ...DEFAULT_DEMAND, ...(config||{}) });
+  const [nd, setNd] = useState({ date:"", level:"event", label:"" });
+  const setMult = (k,v)=> setD(p=>({...p,[k]: v===""?"":Number(v)}));
+  const addSpecial = ()=>{
+    if(!nd.date) return;
+    const sp=[...(d.specialDays||[]).filter(x=>x.date!==nd.date), {date:nd.date, level:nd.level, label:(nd.label||"").trim()}].sort((a,b)=>a.date<b.date?-1:1);
+    setD(p=>({...p,specialDays:sp})); setNd({date:"",level:"event",label:""});
+  };
+  const delSpecial = (date)=> setD(p=>({...p,specialDays:(p.specialDays||[]).filter(x=>x.date!==date)}));
+  const row = (label,key)=>(
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
+      <span style={{fontSize:13,color:"#ccc"}}>{label}</span>
+      <div style={{display:"flex",alignItems:"center",gap:6}}>
+        <span style={{fontSize:12,color:"#7c8794"}}>×</span>
+        <input type="number" step="0.1" inputMode="decimal" value={d[key]} onChange={e=>setMult(key,e.target.value)}
+          style={{width:70,padding:"6px 8px",background:"#0c0c18",border:"1px solid #2a2a3a",color:"#eee",borderRadius:7,fontSize:13,textAlign:"right"}}/>
+      </div>
+    </div>
+  );
+  return (
+    <Modal onClose={onClose} width={460}>
+      <div style={{fontSize:17,fontWeight:800,color:"#fff",marginBottom:4}}>⚙ 需要設定</div>
+      <div style={{fontSize:11,color:"#8b95a1",marginBottom:14}}>曜日や特別日ごとの倍率。最低在庫・発注量に自動で掛かります（平日は常に×1.0）。</div>
+      <div style={{background:"#0a0a16",border:"1px solid #1e1e2e",borderRadius:10,padding:"6px 14px",marginBottom:16}}>
+        {row("週末（土・日）","weekend")}
+        {row("祝日","holiday")}
+        {row("イベント日","event")}
+      </div>
+      <div style={{fontSize:12,fontWeight:700,color:"#e5e7eb",marginBottom:8}}>特別日カレンダー</div>
+      <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
+        <input type="date" value={nd.date} onChange={e=>setNd(p=>({...p,date:e.target.value}))} style={{padding:"7px",background:"#0c0c18",border:"1px solid #2a2a3a",color:"#eee",borderRadius:7,fontSize:12}}/>
+        <select value={nd.level} onChange={e=>setNd(p=>({...p,level:e.target.value}))} style={{padding:"7px",background:"#0c0c18",border:"1px solid #2a2a3a",color:"#eee",borderRadius:7,fontSize:12}}>
+          <option value="event">イベント</option><option value="holiday">祝日</option>
+        </select>
+        <input value={nd.label} onChange={e=>setNd(p=>({...p,label:e.target.value}))} placeholder="名称（例: 花火大会）" style={{flex:1,minWidth:120,padding:"7px",background:"#0c0c18",border:"1px solid #2a2a3a",color:"#eee",borderRadius:7,fontSize:12}}/>
+        <Btn onClick={addSpecial} color="#0077B6" style={{padding:"7px 14px"}}>追加</Btn>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:18,maxHeight:160,overflowY:"auto"}}>
+        {(d.specialDays||[]).length===0
+          ? <div style={{fontSize:11,color:"#6b7280"}}>祝日・イベント日を追加すると、その日は上の倍率が使われます。</div>
+          : (d.specialDays||[]).map(s=>(
+            <div key={s.date} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#0c0c18",border:"1px solid #1e1e2e",borderRadius:8,padding:"7px 12px"}}>
+              <span style={{fontSize:12,color:"#eee"}}>{s.date}　<span style={{color:"#fbbf24"}}>{DEMAND_LABEL[s.level]}</span>　{s.label}</span>
+              <button onClick={()=>delSpecial(s.date)} style={{background:"none",border:"none",color:"#f87171",cursor:"pointer",fontSize:13}}>削除</button>
+            </div>
+          ))}
+      </div>
+      <div style={{display:"flex",gap:10}}>
+        <Btn onClick={onClose} color="#1a1a2e" style={{color:"#8b95a1",flex:1}}>キャンセル</Btn>
+        <Btn onClick={()=>{ onSave(d); onClose(); }} color="#E85D04" style={{flex:1}}>保存する</Btn>
+      </div>
+    </Modal>
+  );
+}
+
+function OrderView({inventory, setInventory, suppliers, setSuppliers, orders, setOrders, priceHistory, setPriceHistory, currentUserId, notify, storeFilter, demandConfig, setDemandConfig}) {
   const [confirmOrder, setConfirmOrder] = useState(null);
   const [tab, setTab] = useState("candidates");
   const [selectedItems, setSelectedItems] = useState({});
@@ -2634,15 +2707,23 @@ function OrderView({inventory, setInventory, suppliers, setSuppliers, orders, se
   const [showSupplierForm, setShowSupplierForm] = useState(false);
   const [showSupplierReg, setShowSupplierReg] = useState(null);
   const [newSupplier, setNewSupplier] = useState({name:"",contact:"",sendMethod:"email",lineId:"",fax:"",tel:""});
+  const [showDemand, setShowDemand] = useState(false);
+  // 発注がカバーする対象日（既定=明日）。需要倍率を最低在庫・発注量に反映
+  const [targetDay, setTargetDay] = useState(dateStr(-1));
+  const dc = { ...DEFAULT_DEMAND, ...(demandConfig||{}) };
+  const mult = demandMult(targetDay, dc);
+  const level = dayLevelOf(targetDay, dc);
+  const effMin   = it => (it.demandFlex!==false) ? Math.ceil(Number(it.minStock||0)*mult) : Number(it.minStock||0);
+  const effOrder = it => (it.demandFlex!==false) ? Math.round(Number(it.orderQty||0)*mult) : Number(it.orderQty||0);
 
-  const lowItems = inventory.filter(i=>i.stock<=i.minStock);
+  const lowItems = inventory.filter(i=>i.stock<=effMin(i));
   const grouped = suppliers.reduce((a,s)=>{
     const items = lowItems.filter(i=>i.supplierId===s.id);
     if (items.length > 0) a[s.id] = items;
     return a;
   }, {});
 
-  const getQty = item => editQty[item.id] ?? item.orderQty;
+  const getQty = item => editQty[item.id] ?? effOrder(item);
 
   const sendOrder = supplierId => {
     const sup = suppliers.find(s=>s.id===supplierId);
@@ -2856,6 +2937,21 @@ function OrderView({inventory, setInventory, suppliers, setSuppliers, orders, se
 
       {tab==="candidates" && (
         <div>
+          {/* 需要日（対象日）バー：曜日・祝日・イベントで最低在庫/発注量を自動調整 */}
+          <div style={{background:"#0c0c18",border:"1px solid #1e1e2e",borderRadius:12,padding:"12px 14px",marginBottom:16,display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+            <span style={{fontSize:11,color:"#8b95a1",fontWeight:700}}>対象日</span>
+            <div style={{display:"flex",gap:6}}>
+              {[["今日",dateStr(0)],["明日",dateStr(-1)],["明後日",dateStr(-2)]].map(([lbl,d])=>(
+                <button key={d} onClick={()=>setTargetDay(d)}
+                  style={{padding:"5px 12px",borderRadius:8,border:"none",cursor:"pointer",fontSize:11,background:targetDay===d?"#0077B6":"#1a1a2a",color:targetDay===d?"#fff":"#9ca3af"}}>{lbl}</button>
+              ))}
+            </div>
+            <span style={{fontSize:12,fontWeight:700,color: level==="weekday"?"#8b95a1":"#fbbf24"}}>
+              {DEMAND_LABEL[level]}{mult!==1?` ×${mult}`:"（通常）"}
+            </span>
+            {mult!==1 && <span style={{fontSize:10,color:"#7c8794"}}>最低在庫・発注量を自動で増やしています</span>}
+            <button onClick={()=>setShowDemand(true)} style={{marginLeft:"auto",padding:"5px 12px",background:"#1a1a2e",border:"1px solid #2a2a3a",color:"#c7d0db",borderRadius:8,fontSize:11,cursor:"pointer"}}>⚙ 需要設定</button>
+          </div>
           {Object.keys(grouped).length === 0
             ? <div style={{color:"#6b7280",fontSize:14,padding:24,textAlign:"center"}}>在庫不足の商品はありません 🎉</div>
             : Object.entries(grouped).map(([supplierId,items])=>{
@@ -3035,6 +3131,8 @@ function OrderView({inventory, setInventory, suppliers, setSuppliers, orders, se
         <InspectionModal order={inspectOrder} suppliers={suppliers} onComplete={completeInspection} onClose={()=>setInspectOrder(null)}/>
       )}
 
+      {showDemand && <DemandSettingsModal config={demandConfig} onClose={()=>setShowDemand(false)} onSave={(d)=>{ setDemandConfig && setDemandConfig(d); notify("✓ 需要設定を保存しました"); }}/>}
+
       {showSupplierForm && <IssueSupplierModal onClose={()=>setShowSupplierForm(false)} setSuppliers={setSuppliers} notify={notify}/>}
 
       {showSupplierReg && (
@@ -3159,7 +3257,7 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
 
   const openNew = () => {
     setEditItem(null);
-    setForm({name:"",category:"調味料",storageGroup:storageGroupOptions[0],unit:"g",customUnit:"",stock:"0",minStock:"500",orderQty:"1000",supplierId:"s1",unitPrice:"0",bagSize:"",bagUnit:"袋"});
+    setForm({name:"",category:"調味料",storageGroup:storageGroupOptions[0],unit:"g",customUnit:"",stock:"0",minStock:"500",orderQty:"1000",supplierId:"s1",unitPrice:"0",bagSize:"",bagUnit:"袋",demandFlex:true});
     setShowBag(false);
     setShowForm(true);
   };
@@ -3171,7 +3269,8 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
       stock:String(item.stock), minStock:String(item.minStock),
       orderQty:String(item.orderQty), supplierId:item.supplierId||"s1",
       unitPrice:String(item.unitPrice),
-      bagSize:String(item.bagSize||""), bagUnit:item.bagUnit||"袋"
+      bagSize:String(item.bagSize||""), bagUnit:item.bagUnit||"袋",
+      demandFlex: item.demandFlex!==false
     });
     setShowBag(!!item.bagSize);
     setShowForm(true);
@@ -3186,6 +3285,7 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
       unitPrice:Number(form.unitPrice),
       bagSize: form.bagSize ? Number(form.bagSize) : null,
       bagUnit: form.bagSize ? form.bagUnit : null,
+      demandFlex: form.demandFlex!==false,
     };
     if (editItem) {
       setInventory(p=>p.map(i=>i.id===editItem.id ? {...i,...payload} : i));
@@ -3315,6 +3415,16 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
           </div>
           <div style={{fontSize:10,color:"#7c8794",marginTop:6,lineHeight:1.6}}>
             現在在庫＝今ある数 ／ 最低在庫＝これを下回ったら発注アラート ／ 発注数量＝1回に頼む数（すべて{form.unit||"個"}）
+          </div>
+          <div style={{marginTop:14,background:"#0a0a16",border:"1px solid #1e1e2e",borderRadius:10,padding:"12px 14px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+            <div>
+              <div style={{fontSize:12,fontWeight:700,color:"#e5e7eb"}}>需要変動を反映する</div>
+              <div style={{fontSize:10,color:"#7c8794",marginTop:2,lineHeight:1.5}}>週末・祝日・イベント日に、最低在庫と発注量を自動で増やします（発注管理の「需要設定」で倍率を調整）。米など変動しない商品はOFFに。</div>
+            </div>
+            <button type="button" onClick={()=>setForm(p=>({...p,demandFlex:!(p.demandFlex!==false)}))}
+              style={{flexShrink:0,width:46,height:26,borderRadius:13,border:"none",cursor:"pointer",background:form.demandFlex!==false?"#16a34a":"#2a2a3a",position:"relative",transition:"background .2s"}}>
+              <span style={{position:"absolute",top:3,left:form.demandFlex!==false?23:3,width:20,height:20,borderRadius:10,background:"#fff",transition:"left .2s"}}/>
+            </button>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
             <Select label="取引業者" value={form.supplierId} onChange={e=>setForm(p=>({...p,supplierId:e.target.value}))}
@@ -5471,6 +5581,7 @@ function AppInner() {
   const [taskCats, setTaskCats] = useState(DEFAULT_TASK_CATS);
   const saveTaskCats = cats => { setTaskCats(cats); };
   const [pointConfig, setPointConfig] = useState(DEFAULT_POINT_CONFIG);
+  const [demandConfig, setDemandConfig] = useState(DEFAULT_DEMAND);
   const [openItems,  setOpenItems]  = useState(OPS_OPEN);
   const [closeItems, setCloseItems] = useState(OPS_CLOSE);
   const [paletteDrag, setPaletteDrag] = useState(null);
@@ -5546,6 +5657,7 @@ function AppInner() {
     setTaskCats(data?.taskCats || []);
     setHqTasks(data?.hqTasks || []);
     setPointConfig(data?.pointConfig || DEFAULT_POINT_CONFIG);
+    setDemandConfig(data?.demandConfig || DEFAULT_DEMAND);
     setLastCarryDate(data?.lastCarryDate || null);
     versionsRef.current = data?.versions || {}; // 各リソースのバージョンを記録
   };
@@ -5657,6 +5769,7 @@ function AppInner() {
   useRemoteStateSync(syncEnabled, "closeItems", closeItems, notify, versionsRef, applyServer);
   useRemoteStateSync(syncEnabled, "hqTasks", hqTasks, notify, versionsRef, applyServer);
   useRemoteStateSync(syncEnabled, "pointConfig", pointConfig, notify, versionsRef, applyServer);
+  useRemoteStateSync(syncEnabled, "demandConfig", demandConfig, notify, versionsRef, applyServer);
   useRemoteStateSync(syncEnabled && lastCarryDate !== undefined, "lastCarryDate", lastCarryDate, notify, versionsRef, applyServer);
 
   INITIAL_USERS = users;
@@ -6063,7 +6176,7 @@ function AppInner() {
           {view==="prep"      && <PrepView allTasks={allPrepTasks} setAllTasks={setAllPrepTasks} currentUserId={currentUserId} recipes={recipes} notify={notify} setInventory={setInventory} storeFilter={storeFilter}/>}
           {view==="clean"     && <CleanView tasks={cleanTasks} setTasks={setCleanTasks} currentUserId={currentUserId} notify={notify} storeFilter={storeFilter}/>}
         {view==="inventory" && <InventoryView inventory={inventory} setInventory={setInventory} notify={notify} storeFilter={storeFilter} currentUserId={currentUserId} stores={stores}/>}
-          {view==="order"     && <OrderView inventory={inventory} setInventory={setInventory} suppliers={suppliers} setSuppliers={setSuppliers} orders={orders} setOrders={setOrders} priceHistory={priceHistory} setPriceHistory={setPriceHistory} currentUserId={currentUserId} notify={notify} storeFilter={storeFilter}/>}
+          {view==="order"     && <OrderView inventory={inventory} setInventory={setInventory} suppliers={suppliers} setSuppliers={setSuppliers} orders={orders} setOrders={setOrders} priceHistory={priceHistory} setPriceHistory={setPriceHistory} currentUserId={currentUserId} notify={notify} storeFilter={storeFilter} demandConfig={demandConfig} setDemandConfig={setDemandConfig}/>}
           {view==="tasks"     && <TaskManagerView routines={routines} setRoutines={setRoutines} allPrepTasks={allPrepTasks} setAllPrepTasks={setAllPrepTasks} cleanTasks={cleanTasks} setCleanTasks={setCleanTasks} notify={notify} storeFilter={storeFilter} taskCats={taskCats} saveTaskCats={saveTaskCats}/>}
           {view==="ops"       && <OpsView currentUserId={currentUserId} storeFilter={storeFilter} notify={notify} openItems={openItems} setOpenItems={setOpenItems} closeItems={closeItems} setCloseItems={setCloseItems}/>}
           {view==="commission"&& <CommissionView allPrepTasks={allPrepTasks} cleanTasks={cleanTasks} pointConfig={pointConfig} setPointConfig={setPointConfig} currentUserId={currentUserId}/>}
