@@ -5612,7 +5612,7 @@ function AppInner() {
     if (demoMode) {
       (async () => {
         try {
-          const sl = await api.auth.loginByStoreCode("DEMO1");
+          const sl = await api.auth.loginByStoreCode("MISEDEMO"); // 架空のデモ専用テナント
           const mgr = (sl.users||[]).find(u=>u.role==="店長") || (sl.users||[])[0];
           if (!mgr) return;
           const pl = await api.auth.loginByPin(sl.tenantId, sl.storeId, mgr.id, "");
