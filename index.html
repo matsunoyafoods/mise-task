@@ -2713,6 +2713,8 @@ function OrderView({inventory, setInventory, suppliers, setSuppliers, orders, se
   const dc = { ...DEFAULT_DEMAND, ...(demandConfig||{}) };
   const mult = demandMult(targetDay, dc);
   const level = dayLevelOf(targetDay, dc);
+  const WD = ["日","月","火","水","木","金","土"];
+  const wd = ds => WD[new Date(ds+"T00:00:00").getDay()];
   const effMin   = it => (it.demandFlex!==false) ? Math.ceil(Number(it.minStock||0)*mult) : Number(it.minStock||0);
   const effOrder = it => (it.demandFlex!==false) ? Math.round(Number(it.orderQty||0)*mult) : Number(it.orderQty||0);
 
@@ -2937,20 +2939,22 @@ function OrderView({inventory, setInventory, suppliers, setSuppliers, orders, se
 
       {tab==="candidates" && (
         <div>
-          {/* 需要日（対象日）バー：曜日・祝日・イベントで最低在庫/発注量を自動調整 */}
-          <div style={{background:"#0c0c18",border:"1px solid #1e1e2e",borderRadius:12,padding:"12px 14px",marginBottom:16,display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
-            <span style={{fontSize:11,color:"#8b95a1",fontWeight:700}}>対象日</span>
+          {/* 「いつの分を仕入れる？」バー：選んだ日が週末・祝日・イベントなら発注量を自動で増やす */}
+          <div style={{background:"#0c0c18",border:"1px solid #1e1e2e",borderRadius:12,padding:"12px 14px",marginBottom:6,display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+            <span style={{fontSize:11,color:"#8b95a1",fontWeight:700}}>いつの分を仕入れる？</span>
             <div style={{display:"flex",gap:6}}>
               {[["今日",dateStr(0)],["明日",dateStr(-1)],["明後日",dateStr(-2)]].map(([lbl,d])=>(
                 <button key={d} onClick={()=>setTargetDay(d)}
-                  style={{padding:"5px 12px",borderRadius:8,border:"none",cursor:"pointer",fontSize:11,background:targetDay===d?"#0077B6":"#1a1a2a",color:targetDay===d?"#fff":"#9ca3af"}}>{lbl}</button>
+                  style={{padding:"5px 12px",borderRadius:8,border:"none",cursor:"pointer",fontSize:11,background:targetDay===d?"#0077B6":"#1a1a2a",color:targetDay===d?"#fff":"#9ca3af"}}>{lbl}（{wd(d)}）</button>
               ))}
             </div>
-            <span style={{fontSize:12,fontWeight:700,color: level==="weekday"?"#8b95a1":"#fbbf24"}}>
-              {DEMAND_LABEL[level]}{mult!==1?` ×${mult}`:"（通常）"}
+            <span style={{fontSize:12,fontWeight:700,padding:"3px 10px",borderRadius:8,background: level==="weekday"?"#1a1a2a":"#2a1808",color: level==="weekday"?"#9ca3af":"#fbbf24"}}>
+              {DEMAND_LABEL[level]}{mult!==1?` ×${mult}（多めに発注）`:"（通常）"}
             </span>
-            {mult!==1 && <span style={{fontSize:10,color:"#7c8794"}}>最低在庫・発注量を自動で増やしています</span>}
             <button onClick={()=>setShowDemand(true)} style={{marginLeft:"auto",padding:"5px 12px",background:"#1a1a2e",border:"1px solid #2a2a3a",color:"#c7d0db",borderRadius:8,fontSize:11,cursor:"pointer"}}>⚙ 需要設定</button>
+          </div>
+          <div style={{fontSize:10,color:"#7c8794",marginBottom:16,lineHeight:1.6}}>
+            選んだ日が週末・祝日・イベントなら、その日に合わせて最低在庫と発注量を自動で増やします（平日のままなら通常どおり）。
           </div>
           {Object.keys(grouped).length === 0
             ? <div style={{color:"#6b7280",fontSize:14,padding:24,textAlign:"center"}}>在庫不足の商品はありません 🎉</div>
