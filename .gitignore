@@ -2,3 +2,7 @@
 node_modules/
 backend/.env
 *.log
+lp.html.bak
+*.bak
+*.bak
+.DS_Store

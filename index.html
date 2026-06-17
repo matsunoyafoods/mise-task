@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
-  <title>MISE TASK</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⬡</text></svg>"/>
+  <title>MISE TASK｜飲食店オペレーション管理</title>
+  <link rel="icon" href="/icon.png" type="image/png"/>
+  <link rel="apple-touch-icon" href="/icon.png"/>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
@@ -4924,6 +4925,42 @@ function CustomTaskModal({ category, defaultDeadline, onAdd, onClose }) {
   );
 }
 
+// デモの操作レクチャー（ステップ式オーバーレイ）
+function DemoTour({ onClose }) {
+  const steps = [
+    { ic:"👋", t:"MISE TASK デモへようこそ", d:"これはデモ画面です。自由に触ってOK、変更は保存されません（本番データには影響しません）。左メニューから各機能を見られます。" },
+    { ic:"🏠", t:"TOP｜今日のやること", d:"その日の仕込み・クリーンが一覧で出ます。チェックでタップ完了。左下『＋タスクを追加』からその場で追加もできます。" },
+    { ic:"🔪", t:"仕込み・クリーン・タスク管理", d:"ルーティン（繰り返し）も単発タスクも登録でき、担当者を割り当てられます。" },
+    { ic:"📦", t:"在庫・発注管理", d:"在庫不足を自動で検知し、業者ごとにまとめて発注。受注方法（LINE/メール等）も柔軟です。" },
+    { ic:"🤖", t:"AI自動入力", d:"レシピや請求書を写真・PDFで添付するだけ。AIが商品名・単価・分量を読み取って自動登録します。" },
+    { ic:"🏪", t:"開店・閉店チェック", d:"キッチン／ホールで帯分けしたチェックリスト。完了は店長承認で記録に残ります。" },
+    { ic:"📱", t:"スタッフQR", d:"店舗タブレットに表示したQRを、スタッフが自分のスマホで読み取ってログイン。アプリ登録不要・店外では開けません。" },
+    { ic:"✅", t:"さあ、触ってみてください", d:"気になる画面を自由に操作してOKです。導入のご相談はLPの『相談・申し込み』からどうぞ。" },
+  ];
+  const [i, setI] = useState(0);
+  const s = steps[i];
+  const last = i === steps.length - 1;
+  return (
+    <div style={{position:"fixed",inset:0,background:"#000a",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{width:"100%",maxWidth:420,background:"#0c0c18",border:"1px solid #2a2a3a",borderRadius:18,padding:28,boxShadow:"0 20px 60px #000b"}}>
+        <div style={{fontSize:34,marginBottom:10}}>{s.ic}</div>
+        <div style={{fontSize:18,fontWeight:800,color:"#fff",marginBottom:8}}>{s.t}</div>
+        <div style={{fontSize:13.5,color:"#a0aab4",lineHeight:1.8,marginBottom:18}}>{s.d}</div>
+        <div style={{display:"flex",gap:5,marginBottom:18}}>
+          {steps.map((_,k)=><div key={k} style={{flex:1,height:4,borderRadius:2,background:k<=i?"#E85D04":"#2a2a3a"}}/>)}
+        </div>
+        <div style={{display:"flex",gap:10,justifyContent:"space-between",alignItems:"center"}}>
+          <button onClick={onClose} style={{padding:"8px 12px",background:"none",border:"none",color:"#7c8794",fontSize:12,cursor:"pointer"}}>スキップ</button>
+          <div style={{display:"flex",gap:8}}>
+            {i>0 && <button onClick={()=>setI(i-1)} style={{padding:"9px 16px",background:"#1a1a2e",border:"1px solid #2a2a3a",color:"#c7d0db",borderRadius:9,fontSize:13,cursor:"pointer"}}>戻る</button>}
+            <button onClick={()=> last ? onClose() : setI(i+1)} style={{padding:"9px 20px",background:"linear-gradient(90deg,#E85D04,#F48C06)",border:"none",color:"#fff",borderRadius:9,fontSize:13,fontWeight:700,cursor:"pointer"}}>{last?"はじめる":"次へ"}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // ██  LOGIN SCREEN — 店舗コード + PIN認証
 // ═══════════════════════════════════════════════════════════════════════
@@ -5392,6 +5429,8 @@ function AppInner() {
   const syncEnabledRef = useRef(false);
   const versionsRef = useRef({}); // resource→version(updated_at)。楽観的ロック用
   const [customAdd, setCustomAdd] = useState(null); // カスタム単発タスク追加モーダル
+  const [demoMode] = useState(()=> new URLSearchParams(window.location.search).get("demo")==="1"); // デモ体験モード（保存しない）
+  const [showTour, setShowTour] = useState(false);   // デモの操作レクチャー
 
   // ── ログインハンドラ ──
   const handleLogin = (userId, storeId, token) => {
@@ -5568,8 +5607,27 @@ function AppInner() {
     }
   };
 
-  // 起動時: 保存済みトークンがあればログイン状態を復元（更新してもログイン維持）
+  // 起動時: デモモードなら自動でデモ店舗にログイン（変更は保存しない）。それ以外は保存トークンで復元
   useEffect(() => {
+    if (demoMode) {
+      (async () => {
+        try {
+          const sl = await api.auth.loginByStoreCode("DEMO1");
+          const mgr = (sl.users||[]).find(u=>u.role==="店長") || (sl.users||[])[0];
+          if (!mgr) return;
+          const pl = await api.auth.loginByPin(sl.tenantId, sl.storeId, mgr.id, "");
+          if (pl?.token) {
+            api.setAuthToken(pl.token);
+            setCurrentUserId(pl.userId);
+            setSelectedStoreId(sl.storeId);
+            setIsLoggedIn(true);
+            await loadAppData();
+            setShowTour(true); // 操作レクチャーを表示
+          }
+        } catch (e) { console.error("demo login failed", e); }
+      })();
+      return;
+    }
     try {
       const saved = JSON.parse(localStorage.getItem("mise_auth") || "null");
       if (saved && saved.token) {
@@ -5582,7 +5640,8 @@ function AppInner() {
     } catch {}
   }, []);
 
-  const syncEnabled = !isBootstrapping && syncEnabledRef.current;
+  // デモモードはバックエンドへ保存しない（本番データ保護）
+  const syncEnabled = !isBootstrapping && syncEnabledRef.current && !demoMode;
   useRemoteStateSync(syncEnabled, "stores", stores, notify, versionsRef, applyServer);
   useRemoteStateSync(syncEnabled, "users", users, notify, versionsRef, applyServer);
   useRemoteStateSync(syncEnabled, "suppliers", suppliers, notify, versionsRef, applyServer);
@@ -5735,6 +5794,15 @@ function AppInner() {
       {notification && (
         <div style={{position:"fixed",top:20,right:20,zIndex:9999,background:notification.type==="warn"?"#120e08":"#060f08",border:`1px solid ${notification.type==="warn"?"#78350f":"#14532d"}`,color:notification.type==="warn"?"#fbbf24":"#4ade80",padding:"12px 20px",borderRadius:10,fontSize:13,boxShadow:"0 8px 32px #0009",maxWidth:340}}>
           {notification.msg}
+        </div>
+      )}
+
+      {demoMode && showTour && <DemoTour onClose={()=>setShowTour(false)} />}
+
+      {demoMode && (
+        <div style={{position:"fixed",bottom:16,left:"50%",transform:"translateX(-50%)",zIndex:9998,display:"flex",alignItems:"center",gap:10,background:"#1a1030",border:"1px solid #6D28D9",color:"#e9e2ff",padding:"8px 16px",borderRadius:30,fontSize:12,boxShadow:"0 8px 28px #0009"}}>
+          <span>🎬 デモモード — 自由に操作OK（変更は保存されません）</span>
+          <button onClick={()=>setShowTour(true)} style={{padding:"3px 10px",background:"#E85D04",border:"none",color:"#fff",borderRadius:14,fontSize:11,fontWeight:700,cursor:"pointer"}}>使い方</button>
         </div>
       )}
 
