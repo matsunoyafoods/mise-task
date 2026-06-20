@@ -2993,7 +2993,7 @@ function OrderView({inventory, setInventory, suppliers, setSuppliers, orders, se
                   {items.map(item=>{
                     const checked = selectedItems[item.id] !== false;
                     const qty = getQty(item);
-                    const total = Math.round(qty/1000*item.unitPrice);
+                    const total = Math.round(qty*item.unitPrice);
                     return (
                       <div key={item.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 18px",borderBottom:"1px solid #14141f",flexWrap:"wrap"}}>
                         <input type="checkbox" checked={checked} onChange={()=>setSelectedItems(p=>({...p,[item.id]:!checked}))} style={{width:16,height:16,cursor:"pointer"}}/>
@@ -3024,7 +3024,7 @@ function OrderView({inventory, setInventory, suppliers, setSuppliers, orders, se
           {myOrders.map(order=>{
             const sup = suppliers.find(s=>s.id===order.supplierId);
             const mc = SEND_METHOD_COLORS[order.sendMethod];
-            const total = order.items.reduce((a,i)=>a+Math.round(i.qty/1000*i.unitPrice),0);
+            const total = order.items.reduce((a,i)=>a+Math.round(i.qty*i.unitPrice),0);
             return (
               <div key={order.id} style={{background:"#0c0c18",border:`1px solid ${order.inspected?"#14532d":"#1e1e2e"}`,borderRadius:14,padding:18,marginBottom:12}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:10,marginBottom:12}}>
@@ -3321,7 +3321,7 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
         <Bar v={item.stock} max={item.minStock*3} color={isLow?"#ef4444":"#0077B6"} h={5}/>
         <div style={{display:"flex",justifyContent:"space-between",marginTop:6}}>
           <span style={{fontSize:10,color:"#6b7280"}}>最低: {item.minStock.toLocaleString()}{item.unit}{item.bagSize?` (${Math.floor(item.minStock/item.bagSize)}${item.bagUnit})`:""}</span>
-          <span style={{fontSize:10,color:"#6b7280"}}>¥{item.unitPrice}/100{item.unit}</span>
+          <span style={{fontSize:10,color:"#6b7280"}}>¥{Number(item.unitPrice||0).toLocaleString()}/{item.unit}</span>
         </div>
       </div>
     );
