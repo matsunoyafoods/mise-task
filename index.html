@@ -55,8 +55,8 @@ const CONFIG = {
   // 3) Stripe 公開キー（pk_live_xxx or pk_test_xxx）
   STRIPE_PUBLISHABLE_KEY: window.MISE_TASK_CONFIG?.STRIPE_PUBLISHABLE_KEY || "",
 
-  // APIモード固定: 初期データは Render 側のDBから読み込み
-  USE_DEMO_DATA: false,
+  // デモ判定は URL の ?demo=1 に一本化（このフラグは未使用）。
+  //   デモは専用の架空テナントに読み取り専用でログインし、保存は一切行わない（syncEnabled=false）。
 
   // アプリバージョン
   APP_VERSION: "2.0.0",
@@ -246,7 +246,6 @@ const todayStr = dateStr(0);
 const nowTime = () => new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"});
 
 const ROLES = { HONBU:"本部", TENCHO:"店長", STAFF:"スタッフ" };
-const DEFAULT_ADMIN_PASSWORD = "1234";
 const DEFAULT_TASK_CATS = [];
 const DEFAULT_POINT_CONFIG = { prepDone:10, amountVerified:8, cleanDone:10, deviation:-5 };
 
@@ -296,11 +295,14 @@ const ALL_UNITS    = [...WEIGHT_UNITS,...VOLUME_UNITS,...COUNT_UNITS,"その他"
 
 // 表示用：在庫単位 + 袋数換算 helper
 const fmtStock = (item) => {
-  if (!item.bagSize || !item.bagUnit) return `${item.stock.toLocaleString()}${item.unit}`;
-  const bags = Math.floor(item.stock / item.bagSize);
-  const rem  = item.stock % item.bagSize;
+  // 文字列混入で数値結合(例 "500"+"2000")にならないよう必ず数値化
+  const stock = Number(item.stock) || 0;
+  const bag   = Number(item.bagSize) || 0;
+  if (!bag || !item.bagUnit) return `${stock.toLocaleString()}${item.unit}`;
+  const bags = Math.floor(stock / bag);
+  const rem  = stock % bag;
   return rem > 0
-    ? `${bags}${item.bagUnit}${rem}${item.unit}`
+    ? `${bags}${item.bagUnit}${rem.toLocaleString()}${item.unit}`
     : `${bags}${item.bagUnit}`;
 };
 
@@ -1790,7 +1792,9 @@ function StaffView({users, setUsers, stores, setStores, storeFilter, notify, res
 
   const save = async () => {
     if (!editForm.name.trim()) { notify("名前を入力してください","warn"); return; }
-    const id = editForm._isNew ? (Math.max(0,...users.map(u=>u.id)) + 1) : editForm.id;
+    // 数値IDのみで採番（本部のUUID等が混在してもNaNにならないようにする）
+    const numIds = users.map(u=>Number(u.id)).filter(n=>Number.isFinite(n));
+    const id = editForm._isNew ? ((numIds.length?Math.max(...numIds):0) + 1) : editForm.id;
     const avatar = editForm.name.trim()[0];
     const { _pw, _isNew, ...rest } = editForm;
     const record = { ...rest, id, avatar };
@@ -2146,18 +2150,14 @@ function AISupportView() {
     histRef.current = [...histRef.current, { role: "user", content: q }];
     setLoading(true);
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
+      // サーバー側AIプロキシ経由（ブラウザから外部AIを直接呼ばない＝CORS/キー露出を回避）
+      const res = await fetch(CONFIG.AI_API_URL + "/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          system: CHAT_SYSTEM_PROMPT,
-          messages: histRef.current,
-        }),
+        headers: { "Content-Type": "application/json", ...(AUTH_TOKEN ? { Authorization: "Bearer " + AUTH_TOKEN } : {}) },
+        body: JSON.stringify({ system: CHAT_SYSTEM_PROMPT, messages: histRef.current }),
       });
       const data = await res.json();
-      const reply = data.content?.[0]?.text || "エラーが発生しました。もう一度お試しください。";
+      const reply = (data.content || []).map(c => c.text || "").join("") || "エラーが発生しました。もう一度お試しください。";
       histRef.current = [...histRef.current, { role: "assistant", content: reply }];
       setMsgs(p => [...p, { role: "ai", text: reply }]);
     } catch {
@@ -3284,10 +3284,10 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
     const unit = (form.unit||"").trim() || "個";
     const payload = {
       name:form.name.trim(), category:form.category, storageGroup:form.storageGroup,
-      unit, stock:Number(form.stock), minStock:Number(form.minStock),
-      orderQty:Number(form.orderQty), supplierId:form.supplierId,
-      unitPrice:Number(form.unitPrice),
-      bagSize: form.bagSize ? Number(form.bagSize) : null,
+      unit, stock:Number(form.stock)||0, minStock:Number(form.minStock)||0,
+      orderQty:Number(form.orderQty)||0, supplierId:form.supplierId,
+      unitPrice:Number(form.unitPrice)||0,
+      bagSize: form.bagSize ? Number(form.bagSize)||null : null,
       bagUnit: form.bagSize ? form.bagUnit : null,
       demandFlex: form.demandFlex!==false,
     };
@@ -3295,7 +3295,7 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
       setInventory(p=>p.map(i=>i.id===editItem.id ? {...i,...payload} : i));
       notify("✓ 商品情報を更新しました");
     } else {
-      setInventory(p=>[...p, {...payload, id:"inv"+Date.now(), lastOrder:dateStr(0)}]);
+      setInventory(p=>[...p, {...payload, id:"inv"+Date.now(), storeId:activeStore, lastOrder:dateStr(0)}]);
       notify("✓ 商品を登録しました");
     }
     setShowForm(false);
@@ -3313,14 +3313,14 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
           </div>
           <div style={{textAlign:"right"}}>
             <span style={{fontSize:20,fontWeight:800,color:isLow?"#f87171":"#38bdf8",fontFamily:"monospace"}}>
-              {item.bagSize ? fmtStock(item) : `${item.stock.toLocaleString()}${item.unit}`}
+              {Number(item.bagSize)>0 ? fmtStock(item) : `${Number(item.stock||0).toLocaleString()}${item.unit}`}
             </span>
-            {item.bagSize && <div style={{fontSize:10,color:"#7c8794"}}>{item.stock.toLocaleString()}{item.unit}</div>}
+            {Number(item.bagSize)>0 && <div style={{fontSize:10,color:"#7c8794"}}>{Number(item.stock||0).toLocaleString()}{item.unit}</div>}
           </div>
         </div>
-        <Bar v={item.stock} max={item.minStock*3} color={isLow?"#ef4444":"#0077B6"} h={5}/>
+        <Bar v={Number(item.stock||0)} max={Number(item.minStock||0)*3} color={isLow?"#ef4444":"#0077B6"} h={5}/>
         <div style={{display:"flex",justifyContent:"space-between",marginTop:6}}>
-          <span style={{fontSize:10,color:"#6b7280"}}>最低: {item.minStock.toLocaleString()}{item.unit}{item.bagSize?` (${Math.floor(item.minStock/item.bagSize)}${item.bagUnit})`:""}</span>
+          <span style={{fontSize:10,color:"#6b7280"}}>最低: {Number(item.minStock||0).toLocaleString()}{item.unit}{Number(item.bagSize)>0?` (${Math.floor(Number(item.minStock||0)/Number(item.bagSize))}${item.bagUnit})`:""}</span>
           <span style={{fontSize:10,color:"#6b7280"}}>¥{Number(item.unitPrice||0).toLocaleString()}/{item.unit}</span>
         </div>
       </div>
@@ -4955,13 +4955,19 @@ function StaffQRView({ storeFilter, stores, notify }) {
   const storeId = storeFilter || null;
 
   const gen = async () => {
+    // 店舗未選択（本部=全店舗）では発行APIを呼ばず、店舗選択を促す（400回避）
+    if (!storeId) { setInfo(null); setErr("店舗を選んでください（右上の店舗切替で対象店舗を選ぶと、その店舗のQRを発行します）"); return; }
     setErr("");
     try { setInfo(await api.auth.issueQr(storeId)); }
     catch (e) { setErr(e.message || "QRの発行に失敗しました"); setInfo(null); }
   };
 
-  // 初回＋80秒ごとに自動再発行（トークンは90秒で失効）
-  useEffect(() => { gen(); const t = setInterval(gen, 80000); return () => clearInterval(t); }, [storeId]);
+  // 初回＋80秒ごとに自動再発行（トークンは90秒で失効）。店舗未選択時はタイマーを張らない
+  useEffect(() => {
+    gen();
+    if (!storeId) return;
+    const t = setInterval(gen, 80000); return () => clearInterval(t);
+  }, [storeId]);
 
   // QR描画
   useEffect(() => {
@@ -6040,19 +6046,16 @@ function AppInner() {
           {isHonbu && <div style={{padding:"3px 10px",background:"#1a0a28",border:"1px solid #6D28D944",borderRadius:8,fontSize:11,color:"#c084fc"}}>{selectedStoreId ? "🏪 "+( INITIAL_STORES.find(s=>s.id===selectedStoreId)?.name||"") : "👁 全店舗"}</div>}
           {warnCount > 0 && <div style={{padding:"3px 10px",background:"#120e08",border:"1px solid #78350f",borderRadius:8,fontSize:11,color:"#fbbf24"}}>⚠ 差異 {warnCount}件</div>}
           {/* スタッフ選択 */}
-          <select value={currentUserId ?? ""} onChange={e=>{
-              const uid = e.target.value ? Number(e.target.value) : null;
-              const user = INITIAL_USERS.find(u=>u.id===uid);
-              if (user?.role==="本部") {
-                setPendingUserId(uid); setPwInput(""); setPwError(false); setPwModal("login");
-              } else {
-                setCurrentUserId(uid);
-                setSelectedStoreId(null); // スタッフ切替時は店舗リセット
-              }
+          <select value={currentUserId!=null ? String(currentUserId) : ""} onChange={e=>{
+              // IDは数値(スタッフ)とUUID(本部)が混在するため必ず文字列照合で本人を特定（Number化しない）
+              const v = e.target.value;
+              const user = v ? INITIAL_USERS.find(u=>String(u.id)===v) : null;
+              setCurrentUserId(user ? user.id : null);
+              if (user && user.role!=="本部") setSelectedStoreId(null); // スタッフ切替時は店舗リセット
             }}
             style={{background:"#12121f",border:"1px solid #2a2a3a",color:currentUser?currentUser.color:"#aaa",padding:"6px 12px",borderRadius:20,fontSize:12,cursor:"pointer",fontWeight:currentUser?700:400}}>
             <option value="">スタッフを選択</option>
-            {INITIAL_USERS.map(u=><option key={u.id} value={u.id}>{u.name}（{u.role}）</option>)}
+            {INITIAL_USERS.map(u=><option key={u.id} value={String(u.id)}>{u.name}（{u.role}）</option>)}
           </select>
 
           {/* 店舗選択（本部ログイン時のみ） */}
@@ -6060,12 +6063,8 @@ function AppInner() {
             <select
               value={selectedStoreId ?? "all"}
               onChange={e=>{
-                const val = e.target.value === "all" ? null : Number(e.target.value);
-                if (val === storeFilter) return; // 変更なし
-                // パスワード確認
-                setStoreChangePending(val);
-                setStorePwInput("");
-                setStorePwError(false);
+                // 本部は既に認証済みのため、店舗切替は再パスワード不要（直接切替）
+                setSelectedStoreId(e.target.value === "all" ? null : Number(e.target.value));
               }}
               style={{background:"#0c0c18",border:"1px solid #6D28D944",color:"#c084fc",padding:"6px 12px",borderRadius:20,fontSize:12,cursor:"pointer",fontWeight:700}}>
               <option value="all">🏠 全店舗</option>
