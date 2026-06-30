@@ -294,6 +294,14 @@ const COUNT_UNITS  = ["袋","本","個","枚","箱","缶","パック","玉"];
 const ALL_UNITS    = [...WEIGHT_UNITS,...VOLUME_UNITS,...COUNT_UNITS,"その他"];
 
 // 表示用：在庫単位 + 袋数換算 helper
+// レシピの仕込み方法（手順）テキストを取得。method優先、無ければsteps[]を番号付きに整形
+function recipeMethodText(recipe) {
+  if (!recipe) return "";
+  if (recipe.method && String(recipe.method).trim()) return String(recipe.method).trim();
+  const steps = (recipe.steps || []).filter(s => s && String(s).trim());
+  if (!steps.length) return "";
+  return steps.map((s, i) => `${i + 1}. ${String(s).trim()}`).join("\n");
+}
 const fmtStock = (item) => {
   // 文字列混入で数値結合(例 "500"+"2000")にならないよう必ず数値化
   const stock = Number(item.stock) || 0;
@@ -592,18 +600,26 @@ function AmountVerifyModal({task, recipe, onConfirm, onCancel}) {
 
   // ── 最初の画面: 「規定通り？」ワンタップ確認 ──
   if (mode === "confirm") {
+    const methodText = recipeMethodText(recipe) || (task && task.method ? String(task.method).trim() : "");
     return (
-      <Modal onClose={onCancel} width={360}>
-        <div style={{fontSize:17,fontWeight:800,color:"#fff",marginBottom:4}}>🔪 {task.name}</div>
-        <p style={{fontSize:12,color:"#9ca3af",marginBottom:14}}>仕込みはいかがでしたか？</p>
-        <div style={{background:"#0d0d1a",border:"1px solid #1e1e2e",borderRadius:10,padding:12,marginBottom:18}}>
+      <Modal onClose={onCancel} width={560}>
+        <div style={{fontSize:20,fontWeight:800,color:"#fff",marginBottom:4}}>🔪 {task.name}</div>
+        <p style={{fontSize:14,color:"#9ca3af",marginBottom:16}}>仕込みはいかがでしたか？</p>
+        <div style={{fontSize:12,color:"#8b95a1",fontWeight:700,marginBottom:6}}>分量</div>
+        <div style={{background:"#0d0d1a",border:"1px solid #1e1e2e",borderRadius:10,padding:"10px 14px",marginBottom:16}}>
           {recipe.ingredients.map((ing,i)=>(
-            <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:i<recipe.ingredients.length-1?"1px solid #1e1e2e":"none"}}>
-              <span style={{fontSize:12,color:"#ccc"}}>{ing.name}</span>
-              <span style={{fontSize:12,color:"#E85D04",fontWeight:700}}>{ing.amount}{ing.unit}</span>
+            <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:i<recipe.ingredients.length-1?"1px solid #1e1e2e":"none"}}>
+              <span style={{fontSize:14,color:"#ddd"}}>{ing.name}</span>
+              <span style={{fontSize:14,color:"#E85D04",fontWeight:700}}>{ing.amount}{ing.unit}</span>
             </div>
           ))}
         </div>
+        {methodText && (
+          <div style={{marginBottom:18}}>
+            <div style={{fontSize:12,color:"#8b95a1",fontWeight:700,marginBottom:6}}>📝 仕込み方法（手順）</div>
+            <div style={{background:"#0d0d1a",border:"1px solid #1e1e2e",borderRadius:10,padding:"12px 14px",fontSize:14,color:"#dfe3ea",lineHeight:1.9,whiteSpace:"pre-wrap",maxHeight:240,overflowY:"auto"}}>{methodText}</div>
+          </div>
+        )}
         <div style={{display:"flex",gap:10}}>
           <button onClick={()=>{
             const okLog = recipe.ingredients.map(ing=>({...ing,actual:ing.amount,ok:true,warn:false}));
@@ -3513,7 +3529,7 @@ const FREQ_OPTS = [
   {value:"free",   label:"フリー（日付を複数指定）"},
 ];
 
-function TaskManagerView({routines, setRoutines, allPrepTasks, setAllPrepTasks, cleanTasks, setCleanTasks, notify, storeFilter, taskCats=DEFAULT_TASK_CATS, saveTaskCats}) {
+function TaskManagerView({routines, setRoutines, allPrepTasks, setAllPrepTasks, cleanTasks, setCleanTasks, notify, storeFilter, taskCats=DEFAULT_TASK_CATS, saveTaskCats, recipes=[], setRecipes}) {
   const [tab, setTab] = useState("routines");
   const [catEditForm, setCatEditForm] = useState(null);
   const [showForm, setShowForm] = useState(false);
@@ -3556,21 +3572,29 @@ function TaskManagerView({routines, setRoutines, allPrepTasks, setAllPrepTasks, 
   // ── Form helpers ──
   const openNew = () => {
     setEditRoutine(null);
-    setForm({name:"",category:"prep",store:storeFilter||1,freq:"daily",customDays:[],onceDate:"",freeDates:[],deadline:"10:00",assignedTo:null,recipeId:""});
+    setForm({name:"",category:"prep",store:storeFilter||1,freq:"daily",customDays:[],onceDate:"",freeDates:[],deadline:"10:00",assignedTo:null,recipeId:"",method:""});
     setShowForm(true);
   };
   const openEdit = (r) => {
     setEditRoutine(r);
-    setForm({name:r.name,category:r.category,store:r.store,freq:r.freq,customDays:r.customDays||[],onceDate:r.onceDate||"",freeDates:r.freeDates||[],deadline:r.deadline,assignedTo:r.assignedTo,recipeId:r.recipeId||""});
+    const rec = r.recipeId ? recipes.find(x=>x.id===r.recipeId) : null;
+    setForm({name:r.name,category:r.category,store:r.store,freq:r.freq,customDays:r.customDays||[],onceDate:r.onceDate||"",freeDates:r.freeDates||[],deadline:r.deadline,assignedTo:r.assignedTo,recipeId:r.recipeId||"",
+      method: rec ? recipeMethodText(rec) : (r.method||"")});
     setShowForm(true);
   };
   const saveRoutine = () => {
     if (!form.name.trim()) { notify("タスク名を入力してください","warn"); return; }
+    const { method, ...routineFields } = form;
+    // 手順はレシピに保存（紐づくレシピがあればそのmethodへ）。無ければルーティン自身に保持
+    if (form.recipeId && setRecipes) {
+      setRecipes(p=>p.map(x=>x.id===form.recipeId ? {...x, method: (method||"").trim()} : x));
+    }
+    const routinePayload = { ...routineFields, method: form.recipeId ? undefined : (method||"").trim() };
     if (editRoutine) {
-      setRoutines(p=>p.map(r=>r.id===editRoutine.id ? {...r,...form} : r));
+      setRoutines(p=>p.map(r=>r.id===editRoutine.id ? {...r,...routinePayload} : r));
       notify("✓ ルーティンを更新しました");
     } else {
-      setRoutines(p=>[...p,{...form,id:"rt"+Date.now(),order:p.length,active:true}]);
+      setRoutines(p=>[...p,{...routinePayload,id:"rt"+Date.now(),order:p.length,active:true}]);
       notify("✓ ルーティンを登録しました");
     }
     setShowForm(false);
@@ -3689,6 +3713,19 @@ function TaskManagerView({routines, setRoutines, allPrepTasks, setAllPrepTasks, 
             <div style={{fontSize:11,color:"#8b95a1",marginBottom:5}}>担当者</div>
             <StaffPicker value={form.assignedTo} onChange={id=>setForm(p=>({...p,assignedTo:id}))} storeFilter={form.store}/>
           </div>
+
+          {form.category==="prep" && (
+            <div style={{marginBottom:14}}>
+              <div style={{fontSize:11,color:"#8b95a1",marginBottom:5}}>仕込み方法（手順）</div>
+              <textarea value={form.method||""} onChange={e=>setForm(p=>({...p,method:e.target.value}))}
+                placeholder={"例:\n1. 鶏もも肉を一口大に切る\n2. 調味液に30分漬ける\n3. ..."}
+                rows={6}
+                style={{width:"100%",padding:"10px 12px",background:"#0c0c18",border:"1px solid #2a2a3a",color:"#eee",borderRadius:8,fontSize:13,lineHeight:1.7,resize:"vertical",fontFamily:"inherit"}}/>
+              <div style={{fontSize:10,color:"#7c8794",marginTop:4}}>
+                {form.recipeId ? "紐づくレシピの手順として保存され、完了画面に表示されます。" : "このルーティンの手順として保存され、完了画面に表示されます。"}
+              </div>
+            </div>
+          )}
 
           <div style={{display:"flex",gap:10}}>
             <Btn onClick={()=>setShowForm(false)} color="#1a1a2e" style={{color:"#8b95a1"}}>キャンセル</Btn>
@@ -3966,7 +4003,7 @@ function TopView({allPrepTasks, setAllPrepTasks, cleanTasks, setCleanTasks, inve
       if (toAdd.length === 0) return p;
       return [...p, ...toAdd.map(r => ({
         id: "pt_" + r.id + "_" + viewDate,
-        routineId: r.id, name: r.name, recipeId: r.recipeId || null,
+        routineId: r.id, name: r.name, recipeId: r.recipeId || null, method: r.method || null,
         deadline: r.deadline || "10:00", store: viewStore, assignedTo: r.assignedTo || null,
         date: viewDate, completedAt: null, completedBy: null, amountVerified: false, amountLog: [],
       }))];
@@ -6180,7 +6217,7 @@ function AppInner() {
           {view==="clean"     && <CleanView tasks={cleanTasks} setTasks={setCleanTasks} currentUserId={currentUserId} notify={notify} storeFilter={storeFilter}/>}
         {view==="inventory" && <InventoryView inventory={inventory} setInventory={setInventory} notify={notify} storeFilter={storeFilter} currentUserId={currentUserId} stores={stores}/>}
           {view==="order"     && <OrderView inventory={inventory} setInventory={setInventory} suppliers={suppliers} setSuppliers={setSuppliers} orders={orders} setOrders={setOrders} priceHistory={priceHistory} setPriceHistory={setPriceHistory} currentUserId={currentUserId} notify={notify} storeFilter={storeFilter} demandConfig={demandConfig} setDemandConfig={setDemandConfig}/>}
-          {view==="tasks"     && <TaskManagerView routines={routines} setRoutines={setRoutines} allPrepTasks={allPrepTasks} setAllPrepTasks={setAllPrepTasks} cleanTasks={cleanTasks} setCleanTasks={setCleanTasks} notify={notify} storeFilter={storeFilter} taskCats={taskCats} saveTaskCats={saveTaskCats}/>}
+          {view==="tasks"     && <TaskManagerView routines={routines} setRoutines={setRoutines} allPrepTasks={allPrepTasks} setAllPrepTasks={setAllPrepTasks} cleanTasks={cleanTasks} setCleanTasks={setCleanTasks} notify={notify} storeFilter={storeFilter} taskCats={taskCats} saveTaskCats={saveTaskCats} recipes={recipes} setRecipes={setRecipes}/>}
           {view==="ops"       && <OpsView currentUserId={currentUserId} storeFilter={storeFilter} notify={notify} openItems={openItems} setOpenItems={setOpenItems} closeItems={closeItems} setCloseItems={setCloseItems}/>}
           {view==="commission"&& <CommissionView allPrepTasks={allPrepTasks} cleanTasks={cleanTasks} pointConfig={pointConfig} setPointConfig={setPointConfig} currentUserId={currentUserId}/>}
           {view==="ai_input"   && <AIInputView recipes={recipes} setRecipes={setRecipes} inventory={inventory} setInventory={setInventory} suppliers={suppliers} setSuppliers={setSuppliers} notify={notify}/>}
