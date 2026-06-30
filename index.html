@@ -302,6 +302,29 @@ function recipeMethodText(recipe) {
   if (!steps.length) return "";
   return steps.map((s, i) => `${i + 1}. ${String(s).trim()}`).join("\n");
 }
+// タスク/レシピが消費する材料を返す（recipe優先、無ければtask/routine自身のingredients）
+function consumedIngredients(task, recipes) {
+  if (task && task.recipeId) {
+    const r = (recipes || []).find(x => x.id === task.recipeId);
+    if (r && Array.isArray(r.ingredients) && r.ingredients.length) return r.ingredients;
+  }
+  return (task && Array.isArray(task.ingredients)) ? task.ingredients : [];
+}
+// 在庫から材料分を減らす。itemId一致を優先、無ければ名前一致でフォールバック（既存の名前のみレシピも減るように）
+function applyConsumption(inventory, ingredients) {
+  const ings = (ingredients || []).filter(x => x && (x.itemId != null || (x.name && String(x.name).trim())));
+  if (!ings.length) return inventory;
+  return inventory.map(item => {
+    const ing = ings.find(i =>
+      (i.itemId != null && String(i.itemId) === String(item.id)) ||
+      (i.name && String(i.name).trim() === String(item.name).trim())
+    );
+    if (!ing) return item;
+    const amt = Number(ing.amount) || 0;
+    if (!amt) return item;
+    return { ...item, stock: Math.max(0, (Number(item.stock) || 0) - amt) };
+  });
+}
 const fmtStock = (item) => {
   // 文字列混入で数値結合(例 "500"+"2000")にならないよう必ず数値化
   const stock = Number(item.stock) || 0;
@@ -586,17 +609,37 @@ function AmountVerifyModal({task, recipe, onConfirm, onCancel}) {
     recipe ? recipe.ingredients.reduce((a,ing)=>({...a,[ing.name]:String(ing.amount ?? "")}),{}) : {}
   );
 
-  // レシピなし → ワンタップ完了
-  if (!recipe) return (
-    <Modal onClose={onCancel}>
-      <div style={{fontSize:17,fontWeight:800,color:"#fff",marginBottom:12}}>🔪 仕込み完了確認</div>
-      <p style={{fontSize:13,color:"#889",marginBottom:20}}>レシピが紐づいていません。完了しますか？</p>
+  // レシピなし → ワンタップ完了（材料が登録されていれば表示し、完了時に在庫から減る）
+  if (!recipe) {
+    const tIngs = (task && Array.isArray(task.ingredients)) ? task.ingredients.filter(x=>x&&(x.name||x.itemId!=null)) : [];
+    const tMethod = task && task.method ? String(task.method).trim() : "";
+    return (
+    <Modal onClose={onCancel} width={520}>
+      <div style={{fontSize:18,fontWeight:800,color:"#fff",marginBottom:4}}>🔪 {task?.name||"仕込み完了確認"}</div>
+      <p style={{fontSize:13,color:"#9ca3af",marginBottom:16}}>仕込みはいかがでしたか？</p>
+      {tIngs.length>0 && (<>
+        <div style={{fontSize:12,color:"#8b95a1",fontWeight:700,marginBottom:6}}>使用する材料（完了で在庫から減ります）</div>
+        <div style={{background:"#0d0d1a",border:"1px solid #1e1e2e",borderRadius:10,padding:"10px 14px",marginBottom:16}}>
+          {tIngs.map((ing,i)=>(
+            <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:i<tIngs.length-1?"1px solid #1e1e2e":"none"}}>
+              <span style={{fontSize:14,color:"#ddd"}}>{ing.name}</span>
+              <span style={{fontSize:14,color:"#E85D04",fontWeight:700}}>{ing.amount}{ing.unit}</span>
+            </div>
+          ))}
+        </div>
+      </>)}
+      {tMethod && (<>
+        <div style={{fontSize:12,color:"#8b95a1",fontWeight:700,marginBottom:6}}>📝 仕込み方法（手順）</div>
+        <div style={{background:"#0d0d1a",border:"1px solid #1e1e2e",borderRadius:10,padding:"12px 14px",marginBottom:16,fontSize:14,color:"#ddd",lineHeight:1.8,whiteSpace:"pre-wrap",maxHeight:260,overflowY:"auto"}}>{tMethod}</div>
+      </>)}
+      {tIngs.length===0 && !tMethod && <p style={{fontSize:13,color:"#889",marginBottom:20}}>レシピが紐づいていません。完了しますか？</p>}
       <div style={{display:"flex",gap:10}}>
         <Btn onClick={onCancel} color="#1a1a2e" style={{color:"#8b95a1"}}>戻る</Btn>
         <Btn onClick={()=>onConfirm([])}>完了する</Btn>
       </div>
     </Modal>
-  );
+    );
+  }
 
   // ── 最初の画面: 「規定通り？」ワンタップ確認 ──
   if (mode === "confirm") {
@@ -2404,13 +2447,8 @@ function PrepView({allTasks, setAllTasks, currentUserId, recipes, notify, setInv
     const now = nowTime();
     const ids = (staffIds && staffIds.length>0 && staffIds[0]!==null) ? staffIds : (currentUserId ? [currentUserId] : []);
     setAllTasks(prev=>prev.map(t=>t.id===task.id ? {...t,completedAt:now,completedBy:ids,amountVerified:true,amountLog} : t));
-    if (task.recipeId) {
-      const rec = recipes.find(r=>r.id===task.recipeId);
-      if (rec) setInventory(prev=>prev.map(item=>{
-        const ing = rec.ingredients.find(i=>i.itemId===item.id);
-        return ing ? {...item,stock:Math.max(0,item.stock-ing.amount)} : item;
-      }));
-    }
+    const ings = consumedIngredients(task, recipes);
+    if (ings.length) setInventory(prev=>applyConsumption(prev, ings));
     setVerifyTask(null);
     const hasWarn = amountLog.some(l=>!l.ok);
     notify(hasWarn ? "⚠ 差異あり。完了記録しました" : "✓ 仕込み完了！在庫を更新しました", hasWarn?"warn":"success");
@@ -3249,7 +3287,7 @@ function CommissionView({allPrepTasks, cleanTasks, pointConfig, setPointConfig, 
 }
 
 // ─── INVENTORY VIEW (simplified) ───
-function InventoryView({inventory, setInventory, notify, storeFilter, currentUserId, stores}) {
+function InventoryView({inventory, setInventory, notify, storeFilter, currentUserId, stores, stocktakes=[], setStocktakes, users=[], currentRole}) {
   const [activeStore, setActiveStore] = useState(storeFilter || 1);
   const [tab, setTab] = useState("stock");
   const [showForm, setShowForm] = useState(false);
@@ -3285,6 +3323,86 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
     notify(`✓ ${newItems.length}件を他店舗にコピーしました（重複はスキップ）`);
     setCopyModal(false); setCopyTargets({});
   };
+
+  // 棚卸しを本部へ提出（記録として保存）
+  const submitStocktake = () => {
+    const items = inventory.filter(i=>i.storeId===activeStore);
+    if (!items.length) { notify("対象の在庫がありません","warn"); return; }
+    const lines = items.map(it=>{
+      const entered = stocktake[it.id];
+      const theo  = Number(it.stock)||0;
+      const actual= (entered===""||entered==null) ? theo : Number(entered)||0;
+      // ケース発注品は単価がケース単価なので、1個あたりに換算して評価
+      const rawP  = Number(it.unitPrice)||0;
+      const perU  = (it.orderByCase && Number(it.bagSize)>0) ? rawP/Number(it.bagSize) : rawP;
+      return {name:it.name, category:it.category||"未分類", unit:it.unit||"", theoretical:theo,
+        actual, diff:actual-theo, unitPrice:Math.round(perU*100)/100, value:Math.round(actual*perU)};
+    });
+    const totalValue = lines.reduce((a,l)=>a+l.value,0);
+    const alertCount = lines.filter(l=>l.theoretical>0 && Math.abs(l.diff/l.theoretical)>0.10).length;
+    const store = (stores||[]).find(s=>s.id===activeStore);
+    const me = (users||[]).find(u=>String(u.id)===String(currentUserId));
+    const rec = {id:"stk"+Date.now(), storeId:activeStore, storeName:store?.name||"店舗",
+      submittedAt:new Date().toISOString(), submittedBy: me?.name||"担当者",
+      lines, totalValue, alertCount, itemCount:lines.length};
+    if(!window.confirm(`棚卸しを本部へ提出します。\n店舗: ${rec.storeName}\n品目数: ${rec.itemCount}件\n在庫評価額: ¥${totalValue.toLocaleString()}\n\nよろしいですか？`)) return;
+    if (setStocktakes) setStocktakes(p=>[rec, ...(p||[])]);
+    setStocktake({});
+    notify("✓ 棚卸しを本部へ提出しました");
+    setTab("submitted");
+  };
+
+  // 税理士提出用PDF（印刷ダイアログ→「PDFとして保存」）
+  const printStocktake = (rec) => {
+    const esc = s => String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+    const dt = rec.submittedAt ? new Date(rec.submittedAt) : new Date();
+    const dStr = `${dt.getFullYear()}年${dt.getMonth()+1}月${dt.getDate()}日`;
+    const rows = rec.lines.map((l,i)=>`<tr>
+      <td class="n">${i+1}</td><td>${esc(l.name)}</td><td class="c">${esc(l.category)}</td>
+      <td class="r">${Number(l.actual).toLocaleString()}</td><td class="c">${esc(l.unit)}</td>
+      <td class="r">¥${Number(l.unitPrice).toLocaleString()}</td>
+      <td class="r b">¥${Number(l.value).toLocaleString()}</td>
+      <td class="r ${l.diff!==0?'d':''}">${l.diff>0?'+':''}${Number(l.diff).toLocaleString()}</td></tr>`).join("");
+    const html = `<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<title>棚卸表_${esc(rec.storeName)}_${(rec.submittedAt||"").slice(0,10)}</title>
+<style>
+  *{box-sizing:border-box} body{font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-serif;color:#111;margin:0;padding:28px 32px;font-size:12px}
+  h1{font-size:20px;margin:0 0 2px;letter-spacing:.05em} .sub{font-size:11px;color:#555;margin-bottom:14px}
+  .meta{display:flex;flex-wrap:wrap;gap:6px 28px;font-size:12px;margin-bottom:14px;border:1px solid #ccc;padding:10px 14px;border-radius:6px}
+  .meta b{display:inline-block;min-width:5.5em;color:#444;font-weight:600}
+  table{width:100%;border-collapse:collapse;margin-top:6px} th,td{border:1px solid #bbb;padding:5px 7px}
+  th{background:#f0f0f0;font-size:11px;text-align:center} td.n,td.c{text-align:center;color:#555} td.r{text-align:right;font-variant-numeric:tabular-nums}
+  td.b{font-weight:700} td.d{color:#b91c1c} tfoot td{font-weight:800;background:#fafafa;font-size:13px}
+  .note{font-size:10px;color:#777;margin-top:8px} .sign{margin-top:26px;display:flex;gap:40px;font-size:12px}
+  .sign div{border-top:1px solid #999;padding-top:4px;min-width:160px;color:#555}
+  @media print{body{padding:0}@page{margin:14mm}}
+</style></head><body>
+<h1>棚卸表（在庫評価明細）</h1>
+<div class="sub">Stocktake / Inventory Valuation Report</div>
+<div class="meta">
+  <span><b>店舗</b>${esc(rec.storeName)}</span>
+  <span><b>提出日</b>${dStr}</span>
+  <span><b>提出者</b>${esc(rec.submittedBy)}</span>
+  <span><b>品目数</b>${rec.itemCount}件</span>
+</div>
+<table><thead><tr>
+  <th style="width:34px">No</th><th>品目</th><th style="width:84px">カテゴリ</th>
+  <th style="width:70px">実数量</th><th style="width:50px">単位</th>
+  <th style="width:78px">単価</th><th style="width:96px">金額</th><th style="width:70px">理論差異</th>
+</tr></thead><tbody>${rows}</tbody>
+<tfoot><tr><td colspan="6" class="r">在庫評価額 合計</td><td class="r">¥${Number(rec.totalValue).toLocaleString()}</td><td></td></tr></tfoot>
+</table>
+<div class="note">※ 金額＝実数量 × 単価。単価は1単位あたり。理論差異＝実数量−理論在庫。本表は ${dStr} 時点の棚卸資産明細です。</div>
+<div class="sign"><div>店舗責任者</div><div>本部確認</div></div>
+<scr${""}ipt>window.onload=function(){setTimeout(function(){window.print();},300);};<\/scr${""}ipt>
+</body></html>`;
+    const w = window.open("", "_blank");
+    if(!w){ notify("ポップアップがブロックされました。許可してから再度お試しください。","warn"); return; }
+    w.document.open(); w.document.write(html); w.document.close();
+  };
+
+  // 提出履歴の表示範囲（本部=全店 / それ以外=自店）
+  const visibleStocktakes = (stocktakes||[]).filter(r=> currentRole==="本部" ? true : (storeFilter ? r.storeId===storeFilter : true));
 
   const openNew = () => {
     setEditItem(null);
@@ -3392,7 +3510,7 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
       )}
 
       <div style={{display:"flex",gap:6,marginBottom:18}}>
-        {[["stock","在庫一覧"],["stocktake","棚卸し"]].map(([id,label])=>(
+        {[["stock","在庫一覧"],["stocktake","棚卸し"],["submitted",`提出履歴${visibleStocktakes.length?`(${visibleStocktakes.length})`:""}`]].map(([id,label])=>(
           <button key={id} onClick={()=>setTab(id)} style={{padding:"7px 16px",borderRadius:20,border:"none",cursor:"pointer",fontSize:12,background:tab===id?"#0077B6":"#1a1a2a",color:tab===id?"#fff":"#8b95a1"}}>{label}</button>
         ))}
       </div>
@@ -3532,7 +3650,49 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
               })}
             </div>
           ))}
-          <Btn onClick={()=>notify("✓ 棚卸し完了・本部へ送信しました")} color="#0077B6" style={{width:"100%",padding:14,fontSize:14}}>棚卸し完了・本部へ提出</Btn>
+          <Btn onClick={submitStocktake} color="#0077B6" style={{width:"100%",padding:14,fontSize:14}}>棚卸し完了・本部へ提出</Btn>
+        </div>
+      )}
+
+      {tab==="submitted" && (
+        <div>
+          <div style={{background:"#0a0c18",border:"1px solid #1a2040",borderRadius:12,padding:14,marginBottom:16,fontSize:12,color:"#9ca3af",lineHeight:1.7}}>
+            {currentRole==="本部" ? "全店舗の棚卸し提出をここで確認できます。" : "提出した棚卸しの履歴です。"}
+            各提出の<b style={{color:"#cbd5e1"}}>「PDFで保存」</b>を押すと印刷画面が開きます。印刷先で<b style={{color:"#cbd5e1"}}>「PDFとして保存」</b>を選べば、税理士提出用のファイルになります。
+          </div>
+          {visibleStocktakes.length===0 && (
+            <div style={{textAlign:"center",color:"#6b7280",fontSize:13,padding:"40px 0"}}>まだ提出された棚卸しはありません。<br/>「棚卸し」タブで実数を入力し、本部へ提出してください。</div>
+          )}
+          {visibleStocktakes.map(rec=>{
+            const dt = new Date(rec.submittedAt);
+            return (
+              <div key={rec.id} style={{background:"#0c0c18",border:"1px solid #1e1e2e",borderRadius:14,padding:16,marginBottom:12}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:10}}>
+                  <div>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}}>
+                      <span style={{fontSize:15,fontWeight:800,color:"#eee"}}>🏪 {rec.storeName}</span>
+                      {rec.alertCount>0 && <Chip label={`⚠ 差異 ${rec.alertCount}件`} color="#f87171" bg="#1a0808"/>}
+                    </div>
+                    <div style={{fontSize:11,color:"#7c8794"}}>
+                      提出: {dt.getFullYear()}/{String(dt.getMonth()+1).padStart(2,"0")}/{String(dt.getDate()).padStart(2,"0")} {String(dt.getHours()).padStart(2,"0")}:{String(dt.getMinutes()).padStart(2,"0")} ・ {rec.submittedBy} ・ {rec.itemCount}品目
+                    </div>
+                  </div>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontSize:10,color:"#7c8794"}}>在庫評価額</div>
+                    <div style={{fontSize:20,fontWeight:800,color:"#F48C06",fontFamily:"monospace"}}>¥{Number(rec.totalValue).toLocaleString()}</div>
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:8,marginTop:12,flexWrap:"wrap"}}>
+                  <button onClick={()=>printStocktake(rec)}
+                    style={{padding:"8px 16px",background:"#7f1d1d22",border:"1px solid #b91c1c66",borderRadius:8,color:"#fca5a5",fontSize:12,fontWeight:700,cursor:"pointer"}}>📄 PDFで保存</button>
+                  {currentRole==="本部" && setStocktakes && (
+                    <button onClick={()=>{ if(window.confirm("この提出記録を削除しますか？")) setStocktakes(p=>(p||[]).filter(x=>x.id!==rec.id)); }}
+                      style={{padding:"8px 14px",background:"#1a1a2a",border:"1px solid #2a2a3a",borderRadius:8,color:"#8b95a1",fontSize:12,cursor:"pointer"}}>削除</button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -3553,7 +3713,7 @@ const FREQ_OPTS = [
   {value:"free",   label:"フリー（日付を複数指定）"},
 ];
 
-function TaskManagerView({routines, setRoutines, allPrepTasks, setAllPrepTasks, cleanTasks, setCleanTasks, notify, storeFilter, taskCats=DEFAULT_TASK_CATS, saveTaskCats, recipes=[], setRecipes}) {
+function TaskManagerView({routines, setRoutines, allPrepTasks, setAllPrepTasks, cleanTasks, setCleanTasks, notify, storeFilter, taskCats=DEFAULT_TASK_CATS, saveTaskCats, recipes=[], setRecipes, inventory=[]}) {
   const [tab, setTab] = useState("routines");
   const [catEditForm, setCatEditForm] = useState(null);
   const [showForm, setShowForm] = useState(false);
@@ -3596,24 +3756,32 @@ function TaskManagerView({routines, setRoutines, allPrepTasks, setAllPrepTasks, 
   // ── Form helpers ──
   const openNew = () => {
     setEditRoutine(null);
-    setForm({name:"",category:"prep",store:storeFilter||1,freq:"daily",customDays:[],onceDate:"",freeDates:[],deadline:"10:00",assignedTo:null,recipeId:"",method:""});
+    setForm({name:"",category:"prep",store:storeFilter||1,freq:"daily",customDays:[],onceDate:"",freeDates:[],deadline:"10:00",assignedTo:null,recipeId:"",method:"",ingredients:[]});
     setShowForm(true);
   };
   const openEdit = (r) => {
     setEditRoutine(r);
     const rec = r.recipeId ? recipes.find(x=>x.id===r.recipeId) : null;
     setForm({name:r.name,category:r.category,store:r.store,freq:r.freq,customDays:r.customDays||[],onceDate:r.onceDate||"",freeDates:r.freeDates||[],deadline:r.deadline,assignedTo:r.assignedTo,recipeId:r.recipeId||"",
-      method: rec ? recipeMethodText(rec) : (r.method||"")});
+      method: rec ? recipeMethodText(rec) : (r.method||""),
+      ingredients: (rec && Array.isArray(rec.ingredients) ? rec.ingredients : (r.ingredients||[])).map(x=>({itemId:x.itemId??null,name:x.name||"",amount:x.amount??"",unit:x.unit||""}))});
     setShowForm(true);
   };
   const saveRoutine = () => {
     if (!form.name.trim()) { notify("タスク名を入力してください","warn"); return; }
-    const { method, ...routineFields } = form;
-    // 手順はレシピに保存（紐づくレシピがあればそのmethodへ）。無ければルーティン自身に保持
+    const { method, ingredients, ...routineFields } = form;
+    // 材料（在庫から減る分）。prepのみ。itemIdまたは名前があり、数量>0のものだけ採用
+    const cleanIngs = (form.category==="prep" ? (ingredients||[]) : [])
+      .filter(x=>x && (x.itemId!=null || (x.name&&String(x.name).trim())) )
+      .map(x=>({itemId:x.itemId??null, name:String(x.name||"").trim(), amount:Number(x.amount)||0, unit:x.unit||""}))
+      .filter(x=>x.amount>0);
+    // 手順・材料はレシピに保存（紐づくレシピがあれば）。無ければルーティン自身に保持
     if (form.recipeId && setRecipes) {
-      setRecipes(p=>p.map(x=>x.id===form.recipeId ? {...x, method: (method||"").trim()} : x));
+      setRecipes(p=>p.map(x=>x.id===form.recipeId ? {...x, method:(method||"").trim(), ingredients:cleanIngs} : x));
     }
-    const routinePayload = { ...routineFields, method: form.recipeId ? undefined : (method||"").trim() };
+    const routinePayload = { ...routineFields,
+      method: form.recipeId ? undefined : (method||"").trim(),
+      ingredients: form.recipeId ? undefined : cleanIngs };
     if (editRoutine) {
       setRoutines(p=>p.map(r=>r.id===editRoutine.id ? {...r,...routinePayload} : r));
       notify("✓ ルーティンを更新しました");
@@ -3737,6 +3905,38 @@ function TaskManagerView({routines, setRoutines, allPrepTasks, setAllPrepTasks, 
             <div style={{fontSize:11,color:"#8b95a1",marginBottom:5}}>担当者</div>
             <StaffPicker value={form.assignedTo} onChange={id=>setForm(p=>({...p,assignedTo:id}))} storeFilter={form.store}/>
           </div>
+
+          {form.category==="prep" && (() => {
+            const storeInv = inventory.filter(i=>i.storeId===form.store);
+            return (
+            <div style={{marginBottom:14,background:"#0a0a16",border:"1px solid #1e1e2e",borderRadius:10,padding:12}}>
+              <div style={{fontSize:12,color:"#e5e7eb",fontWeight:700,marginBottom:3}}>使用する材料（完了時に在庫から自動で減ります）</div>
+              <div style={{fontSize:10,color:"#7c8794",marginBottom:8,lineHeight:1.6}}>このタスクを「完了」すると、ここで選んだ在庫商品が入力した数量だけ減ります。</div>
+              {(form.ingredients||[]).map((ing,idx)=>(
+                <div key={idx} style={{display:"flex",gap:6,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}>
+                  <select value={ing.itemId!=null?String(ing.itemId):""}
+                    onChange={e=>{const it=storeInv.find(x=>String(x.id)===e.target.value);setForm(p=>{const a=[...(p.ingredients||[])];a[idx]={...a[idx],itemId:it?it.id:null,name:it?it.name:a[idx].name,unit:it?it.unit:a[idx].unit};return{...p,ingredients:a};});}}
+                    style={{flex:2,minWidth:150,padding:"8px",background:"#0c0c18",border:"1px solid #2a2a3a",color:"#eee",borderRadius:8,fontSize:13}}>
+                    <option value="">在庫から材料を選ぶ…</option>
+                    {storeInv.map(it=><option key={it.id} value={String(it.id)}>{it.name}（在庫 {Number(it.stock||0).toLocaleString()}{it.unit}）</option>)}
+                  </select>
+                  <input type="number" inputMode="decimal" value={ing.amount} placeholder="数量"
+                    onChange={e=>setForm(p=>{const a=[...(p.ingredients||[])];a[idx]={...a[idx],amount:e.target.value};return{...p,ingredients:a};})}
+                    style={{width:84,padding:"8px",background:"#0c0c18",border:"1px solid #2a2a3a",color:"#eee",borderRadius:8,fontSize:13,textAlign:"right"}}/>
+                  <span style={{fontSize:12,color:"#8b95a1",minWidth:26}}>{ing.unit||""}</span>
+                  <button onClick={()=>setForm(p=>({...p,ingredients:(p.ingredients||[]).filter((_,j)=>j!==idx)}))}
+                    style={{background:"none",border:"none",color:"#f87171",cursor:"pointer",fontSize:16,padding:"0 4px"}}>✕</button>
+                </div>
+              ))}
+              {storeInv.length===0 && <div style={{fontSize:11,color:"#fb923c",marginBottom:6}}>この店舗の在庫商品がありません。先に在庫管理で商品を登録してください。</div>}
+              <button onClick={()=>setForm(p=>({...p,ingredients:[...(p.ingredients||[]),{itemId:null,name:"",amount:"",unit:""}]}))}
+                style={{background:"#1a1a2a",border:"1px dashed #3a3a4a",color:"#9ca3af",borderRadius:8,padding:"8px 12px",fontSize:12,cursor:"pointer",marginTop:2}}>＋ 材料を追加</button>
+              <div style={{fontSize:10,color:"#7c8794",marginTop:8,lineHeight:1.6}}>
+                数量は<b style={{color:"#cbd5e1"}}>在庫の単位</b>で入力してください（例: 醤油の在庫が L なら L で入力）。{form.recipeId?"紐づくレシピの材料として保存されます。":"このルーティンの材料として保存されます。"}
+              </div>
+            </div>
+            );
+          })()}
 
           {form.category==="prep" && (
             <div style={{marginBottom:14}}>
@@ -4027,7 +4227,7 @@ function TopView({allPrepTasks, setAllPrepTasks, cleanTasks, setCleanTasks, inve
       if (toAdd.length === 0) return p;
       return [...p, ...toAdd.map(r => ({
         id: "pt_" + r.id + "_" + viewDate,
-        routineId: r.id, name: r.name, recipeId: r.recipeId || null, method: r.method || null,
+        routineId: r.id, name: r.name, recipeId: r.recipeId || null, method: r.method || null, ingredients: r.ingredients || null,
         deadline: r.deadline || "10:00", store: viewStore, assignedTo: r.assignedTo || null,
         date: viewDate, completedAt: null, completedBy: null, amountVerified: false, amountLog: [],
       }))];
@@ -4060,13 +4260,8 @@ function TopView({allPrepTasks, setAllPrepTasks, cleanTasks, setCleanTasks, inve
     const now = new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"});
     const ids = (staffIds && staffIds.length>0) ? staffIds : [];
     setAllPrepTasks(p=>p.map(t=>t.id===task.id?{...t,completedAt:now,completedBy:ids,amountVerified:true,amountLog}:t));
-    if (task.recipeId) {
-      const rec = recipes.find(r=>r.id===task.recipeId);
-      if (rec) setInventory(prev=>prev.map(item=>{
-        const ing = rec.ingredients.find(i=>i.itemId===item.id);
-        return ing ? {...item, stock:Math.max(0,item.stock-ing.amount)} : item;
-      }));
-    }
+    const ings = consumedIngredients(task, recipes);
+    if (ings.length) setInventory(prev=>applyConsumption(prev, ings));
     setVerifyTask(null);
     const hasWarn = amountLog.some(l=>!l.ok);
     notify(hasWarn ? "⚠ 差異あり。完了記録しました" : "✓ 仕込み完了！在庫を更新しました", hasWarn?"warn":"success");
@@ -5641,6 +5836,7 @@ function AppInner() {
   const [allPrepTasks, setAllPrepTasks] = useState([]);
   const [cleanTasks, setCleanTasks] = useState([]);
   const [hqTasks, setHqTasks] = useState([]);
+  const [stocktakes, setStocktakes] = useState([]);
   const [users, setUsers] = useState(INITIAL_USERS);
   const [stores, setStores] = useState(INITIAL_STORES);
   const [recipes, setRecipes] = useState(INITIAL_RECIPES);
@@ -5727,6 +5923,7 @@ function AppInner() {
     setCloseItems(data?.closeItems || []);
     setTaskCats(data?.taskCats || []);
     setHqTasks(data?.hqTasks || []);
+    setStocktakes(data?.stocktakes || []);
     setPointConfig(data?.pointConfig || DEFAULT_POINT_CONFIG);
     setDemandConfig(data?.demandConfig || DEFAULT_DEMAND);
     setLastCarryDate(data?.lastCarryDate || null);
@@ -5739,7 +5936,7 @@ function AppInner() {
       stores:setStores, users:setUsers, suppliers:setSuppliers, inventory:setInventory,
       priceHistory:setPriceHistory, orders:setOrders, recipes:setRecipes, routines:setRoutines,
       prepTasks:setAllPrepTasks, cleanTasks:setCleanTasks, openItems:setOpenItems,
-      closeItems:setCloseItems, taskCats:setTaskCats, hqTasks:setHqTasks,
+      closeItems:setCloseItems, taskCats:setTaskCats, hqTasks:setHqTasks, stocktakes:setStocktakes,
     };
     const s = setters[resource];
     if (s) s(serverData ?? []);
@@ -5839,6 +6036,7 @@ function AppInner() {
   useRemoteStateSync(syncEnabled, "openItems", openItems, notify, versionsRef, applyServer);
   useRemoteStateSync(syncEnabled, "closeItems", closeItems, notify, versionsRef, applyServer);
   useRemoteStateSync(syncEnabled, "hqTasks", hqTasks, notify, versionsRef, applyServer);
+  useRemoteStateSync(syncEnabled, "stocktakes", stocktakes, notify, versionsRef, applyServer);
   useRemoteStateSync(syncEnabled, "pointConfig", pointConfig, notify, versionsRef, applyServer);
   useRemoteStateSync(syncEnabled, "demandConfig", demandConfig, notify, versionsRef, applyServer);
   useRemoteStateSync(syncEnabled && lastCarryDate !== undefined, "lastCarryDate", lastCarryDate, notify, versionsRef, applyServer);
@@ -6239,9 +6437,9 @@ function AppInner() {
           {view==="dashboard" && <Dashboard allPrepTasks={allPrepTasks} cleanTasks={cleanTasks} hqTasks={hqTasks} setHqTasks={setHqTasks} currentUserId={currentUserId} inventory={inventory} orders={orders} storeFilter={storeFilter} notify={notify}/>}
           {view==="prep"      && <PrepView allTasks={allPrepTasks} setAllTasks={setAllPrepTasks} currentUserId={currentUserId} recipes={recipes} notify={notify} setInventory={setInventory} storeFilter={storeFilter}/>}
           {view==="clean"     && <CleanView tasks={cleanTasks} setTasks={setCleanTasks} currentUserId={currentUserId} notify={notify} storeFilter={storeFilter}/>}
-        {view==="inventory" && <InventoryView inventory={inventory} setInventory={setInventory} notify={notify} storeFilter={storeFilter} currentUserId={currentUserId} stores={stores}/>}
+        {view==="inventory" && <InventoryView inventory={inventory} setInventory={setInventory} notify={notify} storeFilter={storeFilter} currentUserId={currentUserId} stores={stores} stocktakes={stocktakes} setStocktakes={setStocktakes} users={users} currentRole={myRole}/>}
           {view==="order"     && <OrderView inventory={inventory} setInventory={setInventory} suppliers={suppliers} setSuppliers={setSuppliers} orders={orders} setOrders={setOrders} priceHistory={priceHistory} setPriceHistory={setPriceHistory} currentUserId={currentUserId} notify={notify} storeFilter={storeFilter} demandConfig={demandConfig} setDemandConfig={setDemandConfig}/>}
-          {view==="tasks"     && <TaskManagerView routines={routines} setRoutines={setRoutines} allPrepTasks={allPrepTasks} setAllPrepTasks={setAllPrepTasks} cleanTasks={cleanTasks} setCleanTasks={setCleanTasks} notify={notify} storeFilter={storeFilter} taskCats={taskCats} saveTaskCats={saveTaskCats} recipes={recipes} setRecipes={setRecipes}/>}
+          {view==="tasks"     && <TaskManagerView routines={routines} setRoutines={setRoutines} allPrepTasks={allPrepTasks} setAllPrepTasks={setAllPrepTasks} cleanTasks={cleanTasks} setCleanTasks={setCleanTasks} notify={notify} storeFilter={storeFilter} taskCats={taskCats} saveTaskCats={saveTaskCats} recipes={recipes} setRecipes={setRecipes} inventory={inventory}/>}
           {view==="ops"       && <OpsView currentUserId={currentUserId} storeFilter={storeFilter} notify={notify} openItems={openItems} setOpenItems={setOpenItems} closeItems={closeItems} setCloseItems={setCloseItems}/>}
           {view==="commission"&& <CommissionView allPrepTasks={allPrepTasks} cleanTasks={cleanTasks} pointConfig={pointConfig} setPointConfig={setPointConfig} currentUserId={currentUserId}/>}
           {view==="ai_input"   && <AIInputView recipes={recipes} setRecipes={setRecipes} inventory={inventory} setInventory={setInventory} suppliers={suppliers} setSuppliers={setSuppliers} notify={notify}/>}
