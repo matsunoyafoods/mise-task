@@ -680,9 +680,14 @@ function AmountVerifyModal({task, recipe, onConfirm, onCancel}) {
 // ─── INSPECTION MODAL ───
 function InspectionModal({order, suppliers, onComplete, onClose}) {
   const sup = suppliers.find(s=>s.id===order.supplierId);
-  const [log, setLog] = useState(order.items.map(i=>({itemId:i.itemId,name:i.name,ordered:i.qty,received:i.qty,unit:i.unit,ok:true})));
+  const [log, setLog] = useState(order.items.map(i=>{
+    const expected = i.byCase ? (Number(i.qty)*Number(i.caseSize||0)) : Number(i.qty);
+    return {itemId:i.itemId,name:i.name,ordered:Number(i.qty),orderUnit:i.unit,
+      byCase:!!i.byCase,caseSize:Number(i.caseSize||0),baseUnit:i.baseUnit||i.unit,
+      expected,received:expected,unit:(i.byCase?(i.baseUnit||"個"):i.unit),ok:true};
+  }));
   const update = (idx, received) => {
-    setLog(p=>p.map((l,i)=>i===idx?{...l,received:Number(received),ok:Math.abs(Number(received)-l.ordered)/l.ordered<=0.05}:l));
+    setLog(p=>p.map((l,i)=>i===idx?{...l,received:Number(received),ok:l.expected? Math.abs(Number(received)-l.expected)/l.expected<=0.05 : true}:l));
   };
   const hasIssue = log.some(l=>!l.ok);
   return (
@@ -693,13 +698,14 @@ function InspectionModal({order, suppliers, onComplete, onClose}) {
         <div key={idx} style={{marginBottom:14}}>
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
             <span style={{fontSize:13,color:"#ccc",fontWeight:600}}>{l.name}</span>
-            <span style={{fontSize:12,color:"#E85D04"}}>発注: {l.ordered.toLocaleString()}{l.unit}</span>
+            <span style={{fontSize:12,color:"#E85D04"}}>発注: {l.ordered.toLocaleString()}{l.orderUnit}{l.byCase?`（目安${l.expected.toLocaleString()}${l.baseUnit}）`:""}</span>
           </div>
+          {l.byCase && <div style={{fontSize:11,color:"#38bdf8",marginBottom:4}}>実際に入っていた {l.baseUnit} を入力してください（在庫に反映）</div>}
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <input type="number" inputMode="decimal" value={l.received} onChange={e=>update(idx,e.target.value)}
               style={{flex:1,padding:"9px",background:l.ok?"#051a0a":"#1a0808",border:`1px solid ${l.ok?"#14532d":"#9a3412"}`,color:"#eee",borderRadius:8,fontSize:13}}/>
             <span style={{fontSize:11,color:"#8b95a1"}}>{l.unit}</span>
-            {l.received > 0 && <Chip label={l.ok?"✓ OK":`差異: ${l.received-l.ordered}`} color={l.ok?"#4ade80":"#f87171"} bg={l.ok?"#052e16":"#1a0808"}/>}
+            {l.received > 0 && <Chip label={l.ok?"✓ OK":`差異: ${(l.received-l.expected).toLocaleString()}`} color={l.ok?"#4ade80":"#f87171"} bg={l.ok?"#052e16":"#1a0808"}/>}
           </div>
         </div>
       ))}
@@ -2733,6 +2739,11 @@ function OrderView({inventory, setInventory, suppliers, setSuppliers, orders, se
   const wd = ds => WD[new Date(ds+"T00:00:00").getDay()];
   const effMin   = it => (it.demandFlex!==false) ? Math.ceil(Number(it.minStock||0)*mult) : Number(it.minStock||0);
   const effOrder = it => (it.demandFlex!==false) ? Math.round(Number(it.orderQty||0)*mult) : Number(it.orderQty||0);
+  // ケース発注（発注=ケース／在庫=個）。bagSize=1ケースの目安個数, bagUnit=ケース名
+  const caseSize    = it => Number(it.bagSize)||0;
+  const byCase      = it => !!(it.orderByCase && caseSize(it)>0);
+  const suggestCases= it => Math.max(1, Math.ceil(effOrder(it)/caseSize(it)));
+  const orderUnitOf = it => byCase(it) ? (it.bagUnit||"ケース") : it.unit;
 
   const lowItems = inventory.filter(i=>i.stock<=effMin(i));
   const grouped = suppliers.reduce((a,s)=>{
@@ -2741,7 +2752,7 @@ function OrderView({inventory, setInventory, suppliers, setSuppliers, orders, se
     return a;
   }, {});
 
-  const getQty = item => editQty[item.id] ?? effOrder(item);
+  const getQty = item => editQty[item.id] ?? (byCase(item) ? suggestCases(item) : effOrder(item));
 
   const sendOrder = supplierId => {
     const sup = suppliers.find(s=>s.id===supplierId);
@@ -2754,7 +2765,7 @@ function OrderView({inventory, setInventory, suppliers, setSuppliers, orders, se
     const {supplierId, sup, items} = confirmOrder;
     const newOrder = {
       id:"o"+Date.now(), supplierId, storeId:storeFilter||1,
-      items:items.map(i=>({itemId:i.id,name:i.name,qty:getQty(i),unit:i.unit,unitPrice:i.unitPrice})),
+      items:items.map(i=>({itemId:i.id,name:i.name,qty:getQty(i),unit:orderUnitOf(i),unitPrice:i.unitPrice,byCase:byCase(i),caseSize:caseSize(i),baseUnit:i.unit})),
       status:"sent", sentAt:new Date().toISOString(), deliveredAt:null,
       sendMethod:sup.sendMethod || sup.orderMethods?.[0] || "other", inspected:false, inspectionLog:[],
     };
@@ -2795,7 +2806,7 @@ function OrderView({inventory, setInventory, suppliers, setSuppliers, orders, se
   // 発注内容をテキスト化
   const buildOrderText = (sup, items) => {
     const lines = [`【発注書】${new Date().toLocaleDateString("ja-JP")}`, `${sup.name} 御中`, ""];
-    items.forEach(i => lines.push(`・${i.name}  ${getQty(i).toLocaleString()}${i.unit}`));
+    items.forEach(i => lines.push(`・${i.name}  ${getQty(i).toLocaleString()}${orderUnitOf(i)}${byCase(i)?`（約${(getQty(i)*caseSize(i)).toLocaleString()}${i.unit}）`:""}`));
     lines.push("", "以上、よろしくお願いいたします。");
     return lines.join("\n");
   };
@@ -2873,7 +2884,7 @@ function OrderView({inventory, setInventory, suppliers, setSuppliers, orders, se
           {confirmOrder.items.map(i=>(
             <div key={i.id} style={{display:"flex",justifyContent:"space-between",padding:"9px 0",borderBottom:"1px solid #1a1a2a"}}>
               <span style={{fontSize:13,color:"#ccc"}}>{i.name}</span>
-              <span style={{fontSize:14,fontWeight:700,color:"#E85D04",fontFamily:"monospace"}}>{getQty(i).toLocaleString()}{i.unit}</span>
+              <span style={{fontSize:14,fontWeight:700,color:"#E85D04",fontFamily:"monospace"}}>{getQty(i).toLocaleString()}{orderUnitOf(i)}{byCase(i)&&<span style={{fontSize:10,color:"#8b95a1",fontWeight:600}}> （約{(getQty(i)*caseSize(i)).toLocaleString()}{i.unit}）</span>}</span>
             </div>
           ))}
           <div style={{marginTop:20}}>
@@ -3022,7 +3033,7 @@ function OrderView({inventory, setInventory, suppliers, setSuppliers, orders, se
                           <input type="number" inputMode="numeric" pattern="[0-9]*" value={qty}
                             onChange={e=>setEditQty(p=>({...p,[item.id]:Number(e.target.value)}))}
                             style={{width:90,padding:"5px 8px",background:"#0a0a16",border:"1px solid #2a2a3a",color:"#eee",borderRadius:6,fontSize:12,textAlign:"right"}}/>
-                          <span style={{fontSize:11,color:"#8b95a1"}}>{item.unit}</span>
+                          <span style={{fontSize:11,color:"#8b95a1"}}>{orderUnitOf(item)}{byCase(item)&&<span style={{color:"#38bdf8"}}> (約{(qty*caseSize(item)).toLocaleString()}{item.unit})</span>}</span>
                           <span style={{fontSize:12,color:"#F48C06",fontWeight:700}}>¥{total.toLocaleString()}</span>
                         </div>
                       </div>
@@ -3277,7 +3288,7 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
 
   const openNew = () => {
     setEditItem(null);
-    setForm({name:"",category:"調味料",storageGroup:storageGroupOptions[0],unit:"g",customUnit:"",stock:"0",minStock:"500",orderQty:"1000",supplierId:"s1",unitPrice:"0",bagSize:"",bagUnit:"袋",demandFlex:true});
+    setForm({name:"",category:"調味料",storageGroup:storageGroupOptions[0],unit:"g",customUnit:"",stock:"0",minStock:"500",orderQty:"1000",supplierId:"s1",unitPrice:"0",bagSize:"",bagUnit:"袋",orderByCase:false,demandFlex:true});
     setShowBag(false);
     setShowForm(true);
   };
@@ -3290,6 +3301,7 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
       orderQty:String(item.orderQty), supplierId:item.supplierId||"s1",
       unitPrice:String(item.unitPrice),
       bagSize:String(item.bagSize||""), bagUnit:item.bagUnit||"袋",
+      orderByCase: !!item.orderByCase,
       demandFlex: item.demandFlex!==false
     });
     setShowBag(!!item.bagSize);
@@ -3305,6 +3317,7 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
       unitPrice:Number(form.unitPrice)||0,
       bagSize: form.bagSize ? Number(form.bagSize)||null : null,
       bagUnit: form.bagSize ? form.bagUnit : null,
+      orderByCase: !!(form.bagSize && form.orderByCase),
       demandFlex: form.demandFlex!==false,
     };
     if (editItem) {
@@ -3424,6 +3437,17 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
                   <datalist id="bagunit_list">{COUNT_UNITS.map(u=><option key={u} value={u}/>)}</datalist>
                 </div>
                 {form.bagSize && <div style={{fontSize:10,color:"#38bdf8",marginTop:6}}>例: {form.bagSize}{form.unit||"個"} = 1{form.bagUnit}</div>}
+                {form.bagSize && (
+                  <label style={{display:"flex",alignItems:"flex-start",gap:8,marginTop:10,cursor:"pointer",background:form.orderByCase?"#0a1f12":"#0c0c18",border:`1px solid ${form.orderByCase?"#14532d":"#1e1e2e"}`,borderRadius:8,padding:10}}>
+                    <input type="checkbox" checked={!!form.orderByCase} onChange={e=>setForm(p=>({...p,orderByCase:e.target.checked}))} style={{width:16,height:16,marginTop:1,cursor:"pointer"}}/>
+                    <div>
+                      <div style={{fontSize:12,color:"#eee",fontWeight:600}}>発注は「{form.bagUnit||"ケース"}」単位で行う（卵などにおすすめ）</div>
+                      <div style={{fontSize:10,color:"#8b95a1",marginTop:3,lineHeight:1.6}}>
+                        在庫・消費は「{form.unit||"個"}」で管理し、発注書は「{form.bagUnit||"ケース"}」で出します。1{form.bagUnit||"ケース"}の入数が毎回変わる場合（例: 10kgの卵）は、納品の検品で<b style={{color:"#cbd5e1"}}>実際に入っていた{form.unit||"個"}数</b>を入力すれば在庫に正確に反映されます。<br/>※この設定にすると、単価は「1{form.bagUnit||"ケース"}あたりの金額」で入力してください。
+                      </div>
+                    </div>
+                  </label>
+                )}
               </div>
             )}
           </div>
@@ -3449,7 +3473,7 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
             <Select label="取引業者" value={form.supplierId} onChange={e=>setForm(p=>({...p,supplierId:e.target.value}))}
               options={[{value:"",label:"未設定"},...INITIAL_SUPPLIERS.map(s=>({value:s.id,label:s.name}))]}/>
-            <Input label="単価 (¥)" type="number" value={form.unitPrice} onChange={e=>setForm(p=>({...p,unitPrice:e.target.value}))}/>
+            <Input label={form.orderByCase ? `単価 (¥/1${form.bagUnit||"ケース"})` : `単価 (¥/${form.unit||"個"})`} type="number" value={form.unitPrice} onChange={e=>setForm(p=>({...p,unitPrice:e.target.value}))}/>
           </div>
           <div style={{display:"flex",gap:10}}>
             <Btn onClick={()=>setShowForm(false)} color="#1a1a2e" style={{color:"#8b95a1"}}>キャンセル</Btn>
