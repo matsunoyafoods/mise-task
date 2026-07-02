@@ -431,8 +431,8 @@ const Btn = ({children,onClick,color="#E85D04",disabled,style={}}) => (
   </button>
 );
 
-const Modal = ({children,onClose,width=480}) => (
-  <div style={{position:"fixed",inset:0,zIndex:2000,background:"#000c",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={onClose}>
+const Modal = ({children,onClose,width=480,dismissable=true}) => (
+  <div style={{position:"fixed",inset:0,zIndex:2000,background:"#000c",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={dismissable?onClose:undefined}>
     <div style={{background:"#0f0f1e",border:"1px solid #2a2a40",borderRadius:16,padding:28,maxWidth:width,width:"93%",maxHeight:"92vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
       {children}
     </div>
@@ -467,6 +467,34 @@ const Select = ({label,value,onChange,options,style={}}) => (
     </select>
   </div>
 );
+// 在庫商品を検索して選ぶピッカー（材料選択用）
+function InvPicker({items=[], value, name, onPick}) {
+  const [open,setOpen]=useState(false);
+  const [q,setQ]=useState("");
+  const sel = items.find(i=>String(i.id)===String(value));
+  const query = q.trim().toLowerCase();
+  const filtered = query ? items.filter(i=>String(i.name||"").toLowerCase().includes(query)) : items;
+  return (
+    <div style={{flex:2,minWidth:150,position:"relative"}}>
+      <input value={open ? q : (sel ? sel.name : (name||""))} placeholder="材料を検索して選ぶ…"
+        onFocus={()=>{setOpen(true);setQ("");}}
+        onChange={e=>{setQ(e.target.value);setOpen(true);}}
+        onBlur={()=>setTimeout(()=>setOpen(false),160)}
+        style={{width:"100%",padding:"8px",background:"#0c0c18",border:"1px solid #2a2a3a",color:"#eee",borderRadius:8,fontSize:13}}/>
+      {open && (
+        <div style={{position:"absolute",top:"calc(100% + 2px)",left:0,right:0,zIndex:60,background:"#12121f",border:"1px solid #2a2a40",borderRadius:8,maxHeight:210,overflowY:"auto",boxShadow:"0 10px 30px #000b"}}>
+          {filtered.length===0 && <div style={{padding:"9px 11px",fontSize:12,color:"#6b7280"}}>該当する材料がありません</div>}
+          {filtered.map(it=>(
+            <div key={it.id} onMouseDown={()=>{onPick(it);setOpen(false);setQ("");}}
+              style={{padding:"9px 11px",fontSize:13,color:"#eee",cursor:"pointer",borderBottom:"1px solid #1a1a2a",display:"flex",justifyContent:"space-between",gap:8}}>
+              <span>{it.name}</span><span style={{fontSize:10,color:"#7c8794",flexShrink:0}}>在庫 {Number(it.stock||0).toLocaleString()}{it.unit}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 
 // ─── STAFF PICKER ───
@@ -668,11 +696,11 @@ function AmountVerifyModal({task, recipe, onConfirm, onCancel}) {
             const okLog = recipe.ingredients.map(ing=>({...ing,actual:ing.amount,ok:true,warn:false}));
             onConfirm(okLog);
           }} style={{flex:1,padding:16,background:"linear-gradient(135deg,#059669,#10b981)",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",lineHeight:1.4}}>
-            ✅ 規定通り<br/><span style={{fontSize:10,fontWeight:400,opacity:.8}}>ワンタップで完了</span>
+            ✅ 登録の分量で完了<br/><span style={{fontSize:10,fontWeight:400,opacity:.8}}>ワンタップ・上の分量で在庫を減らす</span>
           </button>
           <button onClick={()=>setMode("detail")}
             style={{flex:1,padding:16,background:"linear-gradient(135deg,#92400e,#d97706)",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:800,cursor:"pointer",lineHeight:1.4}}>
-            📏 差異あり<br/><span style={{fontSize:10,fontWeight:400,opacity:.8}}>数値を入力</span>
+            ✏️ 量を変えて完了<br/><span style={{fontSize:10,fontWeight:400,opacity:.8}}>今日つくった量を入力</span>
           </button>
         </div>
       </Modal>
@@ -689,8 +717,8 @@ function AmountVerifyModal({task, recipe, onConfirm, onCancel}) {
   const hasWarn = checks.some(c=>c.warn);
   return (
     <Modal onClose={onCancel}>
-      <div style={{fontSize:17,fontWeight:800,color:"#fff",marginBottom:4}}>📏 使用量を入力</div>
-      <p style={{fontSize:12,color:"#9ca3af",marginBottom:18}}>実際に計量した数値を入力。規定値±5%超で記録されます。</p>
+      <div style={{fontSize:17,fontWeight:800,color:"#fff",marginBottom:4}}>✏️ 本日の使用量を入力</div>
+      <p style={{fontSize:12,color:"#9ca3af",marginBottom:18}}>今日実際に使った量を入力してください。<b style={{color:"#cbd5e1"}}>この量が在庫から差し引かれます</b>（例: 卵を10個だけ仕込んだ→10と入力）。登録値と±5%超はログに記録されます。</p>
       {checks.map((ing,i) => {
         const dp = ing.actual > 0 ? Math.round(((ing.actual-ing.amount)/ing.amount)*100) : null;
         return (
@@ -2447,8 +2475,11 @@ function PrepView({allTasks, setAllTasks, currentUserId, recipes, notify, setInv
     const now = nowTime();
     const ids = (staffIds && staffIds.length>0 && staffIds[0]!==null) ? staffIds : (currentUserId ? [currentUserId] : []);
     setAllTasks(prev=>prev.map(t=>t.id===task.id ? {...t,completedAt:now,completedBy:ids,amountVerified:true,amountLog} : t));
-    const ings = consumedIngredients(task, recipes);
-    if (ings.length) setInventory(prev=>applyConsumption(prev, ings));
+    // 在庫減算は「実際に使った量(amountLog.actual)」を優先。未入力(規定通り)ならレシピ/登録の分量
+    const consume = (amountLog && amountLog.length)
+      ? amountLog.map(l=>({itemId:(l.itemId!=null?l.itemId:null), name:l.name, amount:(l.actual!=null?l.actual:l.amount)}))
+      : consumedIngredients(task, recipes);
+    if (consume.length) setInventory(prev=>applyConsumption(prev, consume));
     setVerifyTask(null);
     const hasWarn = amountLog.some(l=>!l.ok);
     notify(hasWarn ? "⚠ 差異あり。完了記録しました" : "✓ 仕込み完了！在庫を更新しました", hasWarn?"warn":"success");
@@ -3517,7 +3548,7 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
 
       {/* 商品登録/編集フォーム */}
       {showForm && (
-        <Modal onClose={()=>setShowForm(false)} width={520}>
+        <Modal onClose={()=>setShowForm(false)} width={520} dismissable={false}>
           <div style={{fontSize:18,fontWeight:800,color:"#fff",marginBottom:20}}>{editItem?"✏ 商品編集":"＋ 商品登録"}</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
             <div style={{gridColumn:"1 / -1"}}>
@@ -3770,18 +3801,29 @@ function TaskManagerView({routines, setRoutines, allPrepTasks, setAllPrepTasks, 
   const saveRoutine = () => {
     if (!form.name.trim()) { notify("タスク名を入力してください","warn"); return; }
     const { method, ingredients, ...routineFields } = form;
+    const methodTrim = (method||"").trim();
     // 材料（在庫から減る分）。prepのみ。itemIdまたは名前があり、数量>0のものだけ採用
     const cleanIngs = (form.category==="prep" ? (ingredients||[]) : [])
       .filter(x=>x && (x.itemId!=null || (x.name&&String(x.name).trim())) )
       .map(x=>({itemId:x.itemId??null, name:String(x.name||"").trim(), amount:Number(x.amount)||0, unit:x.unit||""}))
       .filter(x=>x.amount>0);
-    // 手順・材料はレシピに保存（紐づくレシピがあれば）。無ければルーティン自身に保持
-    if (form.recipeId && setRecipes) {
-      setRecipes(p=>p.map(x=>x.id===form.recipeId ? {...x, method:(method||"").trim(), ingredients:cleanIngs} : x));
+    // 手順・材料はレシピに保存。紐づくレシピがあれば更新、無く材料か手順があれば新規レシピを作成してレシピ一覧に表示
+    let recipeId = form.recipeId || "";
+    if (form.category==="prep" && setRecipes) {
+      if (recipeId) {
+        setRecipes(p=>p.map(x=>x.id===recipeId ? {...x, method:methodTrim, ingredients:cleanIngs} : x));
+      } else if (cleanIngs.length || methodTrim) {
+        recipeId = "rec"+Date.now();
+        const newRecipe = {id:recipeId, name:form.name.trim(), category:"仕込み", yield:"", description:"",
+          ingredients:cleanIngs, steps:[], method:methodTrim,
+          allergens: (typeof detectAllergens==="function") ? detectAllergens(cleanIngs.map(x=>x.name)) : []};
+        setRecipes(p=>[...(p||[]), newRecipe]);
+        notify("✓ レシピとして登録しました");
+      }
     }
-    const routinePayload = { ...routineFields,
-      method: form.recipeId ? undefined : (method||"").trim(),
-      ingredients: form.recipeId ? undefined : cleanIngs };
+    const routinePayload = { ...routineFields, recipeId,
+      method: recipeId ? undefined : methodTrim,
+      ingredients: recipeId ? undefined : cleanIngs };
     if (editRoutine) {
       setRoutines(p=>p.map(r=>r.id===editRoutine.id ? {...r,...routinePayload} : r));
       notify("✓ ルーティンを更新しました");
@@ -3837,7 +3879,7 @@ function TaskManagerView({routines, setRoutines, allPrepTasks, setAllPrepTasks, 
 
       {/* ── ルーティン登録フォーム ── */}
       {showForm && (
-        <Modal onClose={()=>setShowForm(false)} width={520}>
+        <Modal onClose={()=>setShowForm(false)} width={520} dismissable={false}>
           <div style={{fontSize:18,fontWeight:800,color:"#fff",marginBottom:20}}>{editRoutine?"✏ ルーティン編集":"＋ ルーティン登録"}</div>
           <Input label="タスク名 *" value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))} placeholder="例: 醤油ダレ仕込み"/>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
@@ -3914,12 +3956,8 @@ function TaskManagerView({routines, setRoutines, allPrepTasks, setAllPrepTasks, 
               <div style={{fontSize:10,color:"#7c8794",marginBottom:8,lineHeight:1.6}}>このタスクを「完了」すると、ここで選んだ在庫商品が入力した数量だけ減ります。</div>
               {(form.ingredients||[]).map((ing,idx)=>(
                 <div key={idx} style={{display:"flex",gap:6,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}>
-                  <select value={ing.itemId!=null?String(ing.itemId):""}
-                    onChange={e=>{const it=storeInv.find(x=>String(x.id)===e.target.value);setForm(p=>{const a=[...(p.ingredients||[])];a[idx]={...a[idx],itemId:it?it.id:null,name:it?it.name:a[idx].name,unit:it?it.unit:a[idx].unit};return{...p,ingredients:a};});}}
-                    style={{flex:2,minWidth:150,padding:"8px",background:"#0c0c18",border:"1px solid #2a2a3a",color:"#eee",borderRadius:8,fontSize:13}}>
-                    <option value="">在庫から材料を選ぶ…</option>
-                    {storeInv.map(it=><option key={it.id} value={String(it.id)}>{it.name}（在庫 {Number(it.stock||0).toLocaleString()}{it.unit}）</option>)}
-                  </select>
+                  <InvPicker items={storeInv} value={ing.itemId} name={ing.name}
+                    onPick={it=>setForm(p=>{const a=[...(p.ingredients||[])];a[idx]={...a[idx],itemId:it.id,name:it.name,unit:it.unit};return{...p,ingredients:a};})}/>
                   <input type="number" inputMode="decimal" value={ing.amount} placeholder="数量"
                     onChange={e=>setForm(p=>{const a=[...(p.ingredients||[])];a[idx]={...a[idx],amount:e.target.value};return{...p,ingredients:a};})}
                     style={{width:84,padding:"8px",background:"#0c0c18",border:"1px solid #2a2a3a",color:"#eee",borderRadius:8,fontSize:13,textAlign:"right"}}/>
@@ -3960,7 +3998,7 @@ function TaskManagerView({routines, setRoutines, allPrepTasks, setAllPrepTasks, 
 
       {/* ── 手動タスク追加 ── */}
       {showSingle && (
-        <Modal onClose={()=>setShowSingle(false)}>
+        <Modal onClose={()=>setShowSingle(false)} dismissable={false}>
           <div style={{fontSize:18,fontWeight:800,color:"#fff",marginBottom:20}}>＋ タスクを1件追加</div>
           <Input label="タスク名 *" value={singleForm.name} onChange={e=>setSingleForm(p=>({...p,name:e.target.value}))} placeholder="例: 特別仕込み"/>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
@@ -4260,8 +4298,11 @@ function TopView({allPrepTasks, setAllPrepTasks, cleanTasks, setCleanTasks, inve
     const now = new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"});
     const ids = (staffIds && staffIds.length>0) ? staffIds : [];
     setAllPrepTasks(p=>p.map(t=>t.id===task.id?{...t,completedAt:now,completedBy:ids,amountVerified:true,amountLog}:t));
-    const ings = consumedIngredients(task, recipes);
-    if (ings.length) setInventory(prev=>applyConsumption(prev, ings));
+    // 在庫減算は「実際に使った量(amountLog.actual)」を優先。未入力(規定通り)ならレシピ/登録の分量
+    const consume = (amountLog && amountLog.length)
+      ? amountLog.map(l=>({itemId:(l.itemId!=null?l.itemId:null), name:l.name, amount:(l.actual!=null?l.actual:l.amount)}))
+      : consumedIngredients(task, recipes);
+    if (consume.length) setInventory(prev=>applyConsumption(prev, consume));
     setVerifyTask(null);
     const hasWarn = amountLog.some(l=>!l.ok);
     notify(hasWarn ? "⚠ 差異あり。完了記録しました" : "✓ 仕込み完了！在庫を更新しました", hasWarn?"warn":"success");
