@@ -4701,6 +4701,7 @@ function OpsView({currentUserId, storeFilter, notify, openItems, setOpenItems, c
   const [flagModal, setFlagModal] = useState(null);     // item
   const [flagNote, setFlagNote]   = useState("");
   const [finalSign, setFinalSign] = useState(null);     // userId of final approver
+  const [lastCheckedBy, setLastCheckedBy] = useState(null); // 最後に確認したスタッフID
   const [showApprove, setShowApprove] = useState(false);
   const [staffPickOps, setStaffPickOps] = useState(null);
   const [normalConfirm, setNormalConfirm] = useState(null); // {item} 正常確認モーダル
@@ -4771,6 +4772,7 @@ function OpsView({currentUserId, storeFilter, notify, openItems, setOpenItems, c
     } else {
       setChecks(p=>({...p,[item.id]:{done:true,by:staffId,time:now}}));
     }
+    if (staffId!=null) setLastCheckedBy(staffId);
     setStaffPickOps(null);
   };
 
@@ -4793,7 +4795,7 @@ function OpsView({currentUserId, storeFilter, notify, openItems, setOpenItems, c
     notify(`✓ ${mode==="open"?"開店":"閉店"}チェック完了・記録しました！`);
   };
 
-  const resetChecks = () => { setChecks({}); setFinalSign(null); setValueInput({}); };
+  const resetChecks = () => { setChecks({}); setFinalSign(null); setLastCheckedBy(null); setValueInput({}); };
 
   const flagCount = items.filter(i=>checks[i.id]?.flag).length;
   const abnormalCount = items.filter(i=>checks[i.id]?.abnormal).length;
@@ -4934,20 +4936,48 @@ function OpsView({currentUserId, storeFilter, notify, openItems, setOpenItems, c
           </div>
           <div style={{fontSize:12,color:"#aaa",marginBottom:6}}>全{total}項目チェック完了</div>
           {flagCount>0 && <div style={{background:"#120e08",border:"1px solid #78350f",borderRadius:8,padding:"8px 12px",marginBottom:14,fontSize:12,color:"#fbbf24"}}>⚠ 異常報告 {flagCount}件あり・本部に通知されます</div>}
-          <div style={{fontSize:13,color:"#aaa",marginBottom:14}}>承認者を選択してください</div>
-          {storeUsers.filter(u=>u.role==="店長"||u.role==="本部").map(u=>(
-            <button key={u.id} onClick={()=>doApprove(u.id)}
-              style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"12px 16px",background:"#0c0c18",border:`1px solid ${u.color}33`,borderRadius:12,cursor:"pointer",marginBottom:8,transition:"all .15s"}}
-              onMouseEnter={e=>{e.currentTarget.style.background=u.color+"22";}}
-              onMouseLeave={e=>{e.currentTarget.style.background="#0c0c18";}}>
-              <Av u={u} size={36}/>
-              <div style={{textAlign:"left"}}>
-                <div style={{fontSize:14,fontWeight:700,color:"#eee"}}>{u.name}</div>
-                <div style={{fontSize:11,color:"#7c8794"}}>{u.role}</div>
-              </div>
-              <span style={{marginLeft:"auto",fontSize:18}}>→</span>
-            </button>
-          ))}
+          {(()=>{
+            const lastStaff = INITIAL_USERS.find(u=>String(u.id)===String(lastCheckedBy));
+            // 最後にチェックしたスタッフが承認。フォールバックは当店スタッフ or 現在ユーザー
+            const storeStaff = INITIAL_USERS.filter(u=>String(u.store)===String(viewStore));
+            const others = storeStaff.filter(u=>!lastStaff || String(u.id)!==String(lastStaff.id));
+            return (
+              <>
+                <div style={{fontSize:13,color:"#aaa",marginBottom:10}}>最後に確認したスタッフが承認します。</div>
+                {lastStaff ? (
+                  <button onClick={()=>doApprove(lastStaff.id)}
+                    style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"14px 16px",background:lastStaff.color+"22",border:`1.5px solid ${lastStaff.color}`,borderRadius:12,cursor:"pointer",marginBottom:12}}>
+                    <Av u={lastStaff} size={40}/>
+                    <div style={{textAlign:"left"}}>
+                      <div style={{fontSize:15,fontWeight:800,color:"#fff"}}>{lastStaff.name} が承認して完了</div>
+                      <div style={{fontSize:11,color:"#9ca3af"}}>最後に確認したスタッフ・{lastStaff.role}</div>
+                    </div>
+                    <span style={{marginLeft:"auto",fontSize:18,color:"#4ade80"}}>✓</span>
+                  </button>
+                ) : (
+                  <div style={{fontSize:12,color:"#fbbf24",marginBottom:10}}>確認者が特定できませんでした。下から承認するスタッフを選んでください。</div>
+                )}
+                {others.length>0 && (
+                  <>
+                    <div style={{fontSize:11,color:"#6b7280",margin:"6px 0 8px"}}>別のスタッフが承認する場合</div>
+                    {others.map(u=>(
+                      <button key={u.id} onClick={()=>doApprove(u.id)}
+                        style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"10px 16px",background:"#0c0c18",border:`1px solid ${u.color}33`,borderRadius:12,cursor:"pointer",marginBottom:8}}
+                        onMouseEnter={e=>{e.currentTarget.style.background=u.color+"22";}}
+                        onMouseLeave={e=>{e.currentTarget.style.background="#0c0c18";}}>
+                        <Av u={u} size={32}/>
+                        <div style={{textAlign:"left"}}>
+                          <div style={{fontSize:13,fontWeight:700,color:"#eee"}}>{u.name}</div>
+                          <div style={{fontSize:11,color:"#7c8794"}}>{u.role}</div>
+                        </div>
+                        <span style={{marginLeft:"auto",fontSize:16}}>→</span>
+                      </button>
+                    ))}
+                  </>
+                )}
+              </>
+            );
+          })()}
         </Modal>
       )}
 
@@ -4995,7 +5025,7 @@ function OpsView({currentUserId, storeFilter, notify, openItems, setOpenItems, c
               background:`linear-gradient(135deg,${mode==="open"?"#E85D04,#F48C06":"#6D28D9,#7c3aed"})`,
               color:"#fff",boxShadow:`0 4px 20px ${mode==="open"?"#E85D0444":"#6D28D944"}`,
               animation:"pulse 2s infinite"}}>
-            {mode==="open"?"🌅 開店チェック完了！店長承認へ →":"🌙 閉店チェック完了！店長承認へ →"}
+            {mode==="open"?"🌅 開店チェック完了！承認へ →":"🌙 閉店チェック完了！承認へ →"}
           </button>
         )}
         {finalSign && (
