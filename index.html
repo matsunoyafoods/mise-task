@@ -144,7 +144,15 @@ const api = {
   inventory: {
     list: (storeId) => api._fetch(`/inventory?storeId=${storeId || ""}`),
     update: (id, data) => api._fetch(`/inventory/${id}`, { method: "PUT", body: JSON.stringify(data) }),
-    stocktake: (storeId, items) => api._fetch(`/inventory/stocktake`, { method: "POST", body: JSON.stringify({ storeId, items }) }),
+  },
+
+  // ── 棚卸し（実数で在庫を上書き・提出履歴はDBに保存） ──
+  stocktake: {
+    // counts: { [itemId]: 実数 }。入力がなかった品目は上書きされない。
+    submit: (storeId, counts) => api._fetch(`/stocktake/submit`, { method: "POST", body: JSON.stringify({ storeId, counts }) }),
+    // storeId省略時: 本部は全店、それ以外は自店のみ返る
+    history: (storeId) => api._fetch(`/stocktake/history${storeId != null ? `?storeId=${storeId}` : ""}`),
+    remove: (id) => api._fetch(`/stocktake/${id}`, { method: "DELETE" }),
   },
 
   // ── 業者 ──
@@ -3355,33 +3363,45 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
     setCopyModal(false); setCopyTargets({});
   };
 
-  // 棚卸しを本部へ提出（記録として保存）
-  const submitStocktake = () => {
+  // 棚卸しを本部へ提出（サーバーで在庫を実数上書き＋提出履歴をDBに保存）
+  const submitStocktake = async () => {
     const items = inventory.filter(i=>i.storeId===activeStore);
     if (!items.length) { notify("対象の在庫がありません","warn"); return; }
-    const lines = items.map(it=>{
-      const entered = stocktake[it.id];
-      const theo  = Number(it.stock)||0;
-      const actual= (entered===""||entered==null) ? theo : Number(entered)||0;
-      // ケース発注品は単価がケース単価なので、1個あたりに換算して評価
-      const rawP  = Number(it.unitPrice)||0;
-      const perU  = (it.orderByCase && Number(it.bagSize)>0) ? rawP/Number(it.bagSize) : rawP;
-      return {name:it.name, category:it.category||"未分類", unit:it.unit||"", theoretical:theo,
-        actual, diff:actual-theo, unitPrice:Math.round(perU*100)/100, value:Math.round(actual*perU)};
+    const counts = {};
+    let enteredCount = 0;
+    items.forEach(it=>{
+      const v = stocktake[it.id];
+      if (v !== "" && v != null) { counts[it.id] = v; enteredCount++; }
     });
-    const totalValue = lines.reduce((a,l)=>a+l.value,0);
-    const alertCount = lines.filter(l=>l.theoretical>0 && Math.abs(l.diff/l.theoretical)>0.10).length;
+    if (!enteredCount) { notify("実数を1件以上入力してください","warn"); return; }
     const store = (stores||[]).find(s=>s.id===activeStore);
-    const me = (users||[]).find(u=>String(u.id)===String(currentUserId));
-    const rec = {id:"stk"+Date.now(), storeId:activeStore, storeName:store?.name||"店舗",
-      submittedAt:new Date().toISOString(), submittedBy: me?.name||"担当者",
-      lines, totalValue, alertCount, itemCount:lines.length};
-    if(!window.confirm(`棚卸しを本部へ提出します。\n店舗: ${rec.storeName}\n品目数: ${rec.itemCount}件\n在庫評価額: ¥${totalValue.toLocaleString()}\n\nよろしいですか？`)) return;
-    if (setStocktakes) setStocktakes(p=>[rec, ...(p||[])]);
-    setStocktake({});
-    notify("✓ 棚卸しを本部へ提出しました");
-    setTab("submitted");
+    if(!window.confirm(`棚卸しを本部へ提出します。\n店舗: ${store?.name||"店舗"}\n入力品目数: ${enteredCount}/${items.length}件\n\nよろしいですか？`)) return;
+    try {
+      const res = await api.stocktake.submit(activeStore, counts);
+      if (res?.inventory) setInventory(res.inventory);
+      if (res?.submission && setStocktakes) setStocktakes(p=>[res.submission, ...(p||[])]);
+      setStocktake({});
+      notify("✓ 棚卸しを本部へ提出しました");
+      setTab("submitted");
+    } catch (e) {
+      console.error("棚卸しの提出に失敗しました", e);
+      notify("提出に失敗しました: " + (e?.message||e), "warn");
+    }
   };
+
+  // 提出履歴をサーバーから取得（本部=全店 / それ以外=自店のみ）
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.stocktake.history(currentRole==="本部" ? null : activeStore);
+        if (!cancelled && setStocktakes) setStocktakes(res?.data || []);
+      } catch (e) {
+        console.error("棚卸し履歴の取得に失敗しました", e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [activeStore, currentRole]);
 
   // 税理士提出用PDF（印刷ダイアログ→「PDFとして保存」）
   const printStocktake = (rec) => {
@@ -3432,8 +3452,8 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
     w.document.open(); w.document.write(html); w.document.close();
   };
 
-  // 提出履歴の表示範囲（本部=全店 / それ以外=自店）
-  const visibleStocktakes = (stocktakes||[]).filter(r=> currentRole==="本部" ? true : (storeFilter ? r.storeId===storeFilter : true));
+  // 提出履歴（本部=全店 / それ以外=自店のみ。scope は上の useEffect でサーバーに問い合わせ済み）
+  const visibleStocktakes = stocktakes || [];
 
   const openNew = () => {
     setEditItem(null);
@@ -3717,7 +3737,17 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
                   <button onClick={()=>printStocktake(rec)}
                     style={{padding:"8px 16px",background:"#7f1d1d22",border:"1px solid #b91c1c66",borderRadius:8,color:"#fca5a5",fontSize:12,fontWeight:700,cursor:"pointer"}}>📄 PDFで保存</button>
                   {currentRole==="本部" && setStocktakes && (
-                    <button onClick={()=>{ if(window.confirm("この提出記録を削除しますか？")) setStocktakes(p=>(p||[]).filter(x=>x.id!==rec.id)); }}
+                    <button onClick={async ()=>{
+                        if(!window.confirm("この提出記録を削除しますか？")) return;
+                        try {
+                          await api.stocktake.remove(rec.id);
+                          setStocktakes(p=>(p||[]).filter(x=>x.id!==rec.id));
+                          notify("✓ 削除しました");
+                        } catch (e) {
+                          console.error("棚卸し履歴の削除に失敗しました", e);
+                          notify("削除に失敗しました","warn");
+                        }
+                      }}
                       style={{padding:"8px 14px",background:"#1a1a2a",border:"1px solid #2a2a3a",borderRadius:8,color:"#8b95a1",fontSize:12,cursor:"pointer"}}>削除</button>
                   )}
                 </div>
@@ -5994,7 +6024,6 @@ function AppInner() {
     setCloseItems(data?.closeItems || []);
     setTaskCats(data?.taskCats || []);
     setHqTasks(data?.hqTasks || []);
-    setStocktakes(data?.stocktakes || []);
     setPointConfig(data?.pointConfig || DEFAULT_POINT_CONFIG);
     setDemandConfig(data?.demandConfig || DEFAULT_DEMAND);
     setLastCarryDate(data?.lastCarryDate || null);
@@ -6007,7 +6036,7 @@ function AppInner() {
       stores:setStores, users:setUsers, suppliers:setSuppliers, inventory:setInventory,
       priceHistory:setPriceHistory, orders:setOrders, recipes:setRecipes, routines:setRoutines,
       prepTasks:setAllPrepTasks, cleanTasks:setCleanTasks, openItems:setOpenItems,
-      closeItems:setCloseItems, taskCats:setTaskCats, hqTasks:setHqTasks, stocktakes:setStocktakes,
+      closeItems:setCloseItems, taskCats:setTaskCats, hqTasks:setHqTasks,
     };
     const s = setters[resource];
     if (s) s(serverData ?? []);
@@ -6107,7 +6136,6 @@ function AppInner() {
   useRemoteStateSync(syncEnabled, "openItems", openItems, notify, versionsRef, applyServer);
   useRemoteStateSync(syncEnabled, "closeItems", closeItems, notify, versionsRef, applyServer);
   useRemoteStateSync(syncEnabled, "hqTasks", hqTasks, notify, versionsRef, applyServer);
-  useRemoteStateSync(syncEnabled, "stocktakes", stocktakes, notify, versionsRef, applyServer);
   useRemoteStateSync(syncEnabled, "pointConfig", pointConfig, notify, versionsRef, applyServer);
   useRemoteStateSync(syncEnabled, "demandConfig", demandConfig, notify, versionsRef, applyServer);
   useRemoteStateSync(syncEnabled && lastCarryDate !== undefined, "lastCarryDate", lastCarryDate, notify, versionsRef, applyServer);

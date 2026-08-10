@@ -2,6 +2,8 @@
 // MISE TASK — API ルーター (Supabase Edge Function) — ハイブリッド構成
 //   認証/テナント/課金: リレーショナル
 //   業務データ: テナント別の KV 状態ストア(app_state)。フロントの配列同期に対応。
+//   棚卸し提出: リレーショナル（stocktake_submissions / stocktake_items）。
+//     在庫の実数上書きと提出履歴の保存はここだけが行う（service_role）。
 //
 //   POST /auth/honbu-login   { email, password }              -> { token, userId, role, tenantId }
 //   POST /auth/store-login   { code }                          -> { storeId, storeName, tenantId, users }
@@ -11,12 +13,15 @@
 //   GET  /state/:resource    (Bearer) 単一リソース
 //   PUT  /state/:resource    (Bearer) { data } で配列まるごと保存
 //   POST /bootstrap/reset     (Bearer, hq) KV を空に初期化
+//   POST /stocktake/submit    (Bearer) { storeId, counts:{itemId:実数} } -> 在庫を実数で上書き＋履歴保存
+//   GET  /stocktake/history   (Bearer) ?storeId= -> 提出履歴（本部=全店 / それ以外=自店のみ）
+//   DELETE /stocktake/:id     (Bearer, hq) 提出履歴を削除
 //   POST /billing/*           501 (Phase 3)
 // ============================================================================
 import { corsHeaders, err, json } from "../_shared/cors.ts";
 import { admin, anon } from "../_shared/db.ts";
 import { type AppClaims, getClaims, issue, issueQr, verifyQr } from "../_shared/auth.ts";
-import { verifyPin } from "../_shared/pin.ts";
+import { hashPin, verifyPin } from "../_shared/pin.ts";
 
 const FN = "api";
 const ROLE_JP: Record<string, AppClaims["app_role"]> = {
@@ -27,7 +32,7 @@ const ROLE_JP: Record<string, AppClaims["app_role"]> = {
 const KV_RESOURCES = [
   "stores", "users", "suppliers", "inventory", "orders", "recipes", "routines",
   "prepTasks", "cleanTasks", "taskCats", "openItems", "closeItems",
-  "priceHistory", "hqTasks", "pointConfig", "lastCarryDate",
+  "priceHistory", "hqTasks", "pointConfig", "demandConfig", "lastCarryDate",
 ];
 
 function path(req: Request): string[] {
@@ -53,10 +58,40 @@ async function getAllState(tenant: string): Promise<Record<string, unknown>> {
   for (const row of data ?? []) out[(row as any).resource] = (row as any).data;
   return out;
 }
-async function setState(tenant: string, resource: string, data: unknown) {
+// data と version(updated_at) を両方返す（楽観的ロック用）
+async function getAllStateMeta(tenant: string): Promise<{ data: Record<string, unknown>; versions: Record<string, string> }> {
+  const { data } = await admin().from("app_state").select("resource, data, updated_at")
+    .eq("tenant_id", tenant);
+  const out: Record<string, unknown> = {};
+  const versions: Record<string, string> = {};
+  for (const row of data ?? []) {
+    out[(row as any).resource] = (row as any).data;
+    versions[(row as any).resource] = (row as any).updated_at;
+  }
+  return { data: out, versions };
+}
+async function getMeta(tenant: string, resource: string): Promise<{ data: unknown; version: string } | null> {
+  const { data } = await admin().from("app_state").select("data, updated_at")
+    .eq("tenant_id", tenant).eq("resource", resource).maybeSingle();
+  if (!data) return null;
+  return { data: (data as any).data, version: (data as any).updated_at };
+}
+// 保存して新しい version(updated_at) を返す。
+//   DBに実際に保存された形式を読み戻して返す（フロントとDBで文字列形式を一致させる）
+async function setState(tenant: string, resource: string, data: unknown): Promise<string> {
+  const now = new Date().toISOString();
   await admin().from("app_state")
-    .upsert({ tenant_id: tenant, resource, data, updated_at: new Date().toISOString() },
+    .upsert({ tenant_id: tenant, resource, data, updated_at: now },
       { onConflict: "tenant_id,resource" });
+  const m = await getMeta(tenant, resource);
+  return m?.version ?? now;
+}
+// バージョン(タイムスタンプ)が同一かを「時刻」として比較（"...Z" と "...+00:00" を同一視）
+function sameVersion(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false;
+  const ta = Date.parse(a), tb = Date.parse(b);
+  if (Number.isNaN(ta) || Number.isNaN(tb)) return a === b;
+  return ta === tb;
 }
 
 // ── 認証 ─────────────────────────────────────────────────────────────────────
@@ -173,6 +208,54 @@ async function qrLogin(req: Request): Promise<Response> {
   return json({ storeId: store.id, storeName: store.name, tenantId: info.tenant_id, users: storeUsers });
 }
 
+// ── 店長/本部のメール+パスワード認証（専用KV "managerCreds"。bootstrapには載せない） ──
+//   POST /auth/manager-login {email,password} (公開) → token
+//   POST /users/set-credentials {userId,email,password} (要hq/manager) 認証情報を設定
+async function managerLogin(req: Request): Promise<Response> {
+  const b = await body(req);
+  const email = String(b.email || "").trim().toLowerCase();
+  if (!email || !b.password) return err("invalid_input", "メールとパスワードが必要です");
+  const { data: rows } = await admin().from("app_state").select("tenant_id, data").eq("resource", "managerCreds");
+  for (const row of rows ?? []) {
+    const cred = (((row as any).data ?? []) as any[]).find((x) => String(x.email).toLowerCase() === email);
+    if (!cred) continue;
+    if (!(await verifyPin(String(b.password), cred.pwHash))) return err("auth_failed", "メールまたはパスワードが違います", 401);
+    const tenantId = (row as any).tenant_id;
+    const users = ((await getState(tenantId, "users")) ?? []) as any[];
+    const u = users.find((x) => String(x.id) === String(cred.userId));
+    if (!u) return err("not_found", "ユーザーが見つかりません", 404);
+    const token = await issue({
+      sub: String(u.id), app_role: ROLE_JP[u.role] ?? "manager", tenant_id: tenantId,
+      store_id: u.store != null ? String(u.store) : null, app_user_id: String(u.id), name: u.name,
+    });
+    return json({ token, userId: u.id, user: { id: u.id, name: u.name, role: u.role, avatar: u.avatar, color: u.color, store: u.store }, storeId: u.store, tenantId, role: ROLE_JP[u.role] ?? "manager" });
+  }
+  return err("auth_failed", "メールまたはパスワードが違います", 401);
+}
+
+async function setUserCredentials(c: AppClaims, req: Request): Promise<Response> {
+  if (c.app_role !== "hq" && c.app_role !== "manager") return err("forbidden", "権限がありません", 403);
+  const b = await body(req);
+  if (b.userId == null || !b.email) return err("invalid_input", "userId と email が必要です");
+  const email = String(b.email).trim().toLowerCase();
+  // 他テナント含むメール重複チェック
+  const { data: rows } = await admin().from("app_state").select("tenant_id, data").eq("resource", "managerCreds");
+  for (const row of rows ?? []) {
+    if (String((row as any).tenant_id) === String(c.tenant_id)) continue;
+    if ((((row as any).data ?? []) as any[]).some((x) => String(x.email).toLowerCase() === email && String(x.userId) !== String(b.userId))) {
+      return err("email_taken", "このメールアドレスは既に使われています", 409);
+    }
+  }
+  const creds = ((await getState(c.tenant_id, "managerCreds")) ?? []) as any[];
+  const idx = creds.findIndex((x) => String(x.userId) === String(b.userId));
+  const entry: any = { userId: String(b.userId), email };
+  if (b.password) entry.pwHash = await hashPin(String(b.password));
+  else if (idx >= 0) entry.pwHash = creds[idx].pwHash;
+  if (idx >= 0) creds[idx] = { ...creds[idx], ...entry }; else creds.push(entry);
+  await setState(c.tenant_id, "managerCreds", creds);
+  return json({ ok: true });
+}
+
 // ── 業者セルフ登録（KV の suppliers をトークンで更新。公開） ──────────────────
 async function supplierRegister(req: Request): Promise<Response> {
   const b = await body(req);
@@ -249,7 +332,7 @@ async function supplierPriceUpdate(req: Request): Promise<Response> {
 
 // ── bootstrap / state ────────────────────────────────────────────────────────
 async function bootstrap(c: AppClaims): Promise<Response> {
-  const st = await getAllState(c.tenant_id);
+  const { data: st, versions } = await getAllStateMeta(c.tenant_id);
   const { data: tenant } = await admin().from("tenants")
     .select("id, name, plan, ai_option, status").eq("id", c.tenant_id).maybeSingle();
 
@@ -268,7 +351,9 @@ async function bootstrap(c: AppClaims): Promise<Response> {
     taskCats: st.taskCats ?? [], openItems: st.openItems ?? [], closeItems: st.closeItems ?? [],
     priceHistory: st.priceHistory ?? [], hqTasks: st.hqTasks ?? [],
     pointConfig: st.pointConfig ?? null,
+    demandConfig: st.demandConfig ?? null,
     lastCarryDate: st.lastCarryDate ?? null,
+    versions, // 楽観的ロック用（resource→updated_at）
   });
 }
 
@@ -280,8 +365,31 @@ async function getStateRes(c: AppClaims, resource: string): Promise<Response> {
 async function putStateRes(c: AppClaims, resource: string, req: Request): Promise<Response> {
   if (!KV_RESOURCES.includes(resource)) return err("unknown_resource", `未対応: ${resource}`, 404);
   const b = await body(req);
-  await setState(c.tenant_id, resource, b.data ?? []);
-  return json({ ok: true });
+  const incoming = Array.isArray(b.data) ? b.data : null;
+  // 楽観的ロック: baseVersion が現在の version と食い違う = 別端末が先に更新済み
+  //   → 古いデータでの上書きを拒否し、サーバーの最新を返す（データ消失を防ぐ）
+  if (b.baseVersion) {
+    const cur = await getMeta(c.tenant_id, resource);
+    if (cur && !sameVersion(cur.version, b.baseVersion)) {
+      return json({
+        error: { code: "conflict", message: "別の端末で更新されています。最新を反映しました。" },
+        currentVersion: cur.version, data: cur.data,
+      }, 409);
+    }
+  } else if (incoming && incoming.length === 0) {
+    // baseVersion なし（古い/開きっぱなしのタブ等）からの「空で上書き」は破壊的なので拒否。
+    //   既存が非空なら消さずに現状維持し、最新を返す（データ消失を防ぐ最後の砦）
+    const cur = await getMeta(c.tenant_id, resource);
+    const existing = Array.isArray(cur?.data) ? (cur!.data as unknown[]) : [];
+    if (existing.length > 0) {
+      return json({
+        error: { code: "empty_blocked", message: "空データでの上書きを防止しました（古いタブの可能性）。最新を反映しました。" },
+        currentVersion: cur!.version, data: cur!.data,
+      }, 409);
+    }
+  }
+  const version = await setState(c.tenant_id, resource, b.data ?? []);
+  return json({ ok: true, version });
 }
 
 async function resetState(c: AppClaims): Promise<Response> {
@@ -290,6 +398,121 @@ async function resetState(c: AppClaims): Promise<Response> {
     await setState(c.tenant_id, r, r === "lastCarryDate" ? null : []);
   }
   return json({ data: { stores: [], users: [], suppliers: [], inventory: [], orders: [], recipes: [], routines: [], prepTasks: [], cleanTasks: [], taskCats: [], openItems: [], closeItems: [], priceHistory: [], hqTasks: [], lastCarryDate: null } });
+}
+
+// ── 棚卸し提出（実数で在庫を上書き。履歴はリレーショナルに保存） ──────────────
+//   誰が(app_user_id/name)・いつ(submitted_at)・各品目の実数は JWT/サーバー側の
+//   値のみを信頼する（クライアントから偽装できない）。承認フローはなし＝提出即反映。
+function normStoreId(v: unknown): string { return String(v); }
+
+async function stocktakeSubmit(c: AppClaims, req: Request): Promise<Response> {
+  const b = await body(req) as { storeId?: unknown; counts?: Record<string, unknown> };
+  if (b.storeId == null) return err("invalid_input", "storeId が必要です");
+  const storeId = normStoreId(b.storeId);
+  if (c.app_role !== "hq" && normStoreId(c.store_id) !== storeId) {
+    return err("forbidden", "自店舗以外の棚卸しは提出できません", 403);
+  }
+  const counts = (b.counts && typeof b.counts === "object") ? b.counts as Record<string, unknown> : {};
+
+  const inv = ((await getState(c.tenant_id, "inventory")) ?? []) as any[];
+  const storeItems = inv.filter((it) => normStoreId(it.storeId) === storeId);
+  if (!storeItems.length) return err("not_found", "対象の在庫がありません", 404);
+
+  const stores = ((await getState(c.tenant_id, "stores")) ?? []) as any[];
+  const store = stores.find((s) => normStoreId(s.id) === storeId);
+
+  const lines: any[] = [];
+  let totalValue = 0, alertCount = 0, changed = false;
+  const newInv = inv.map((it) => {
+    if (normStoreId(it.storeId) !== storeId) return it;
+    const theo = Number(it.stock) || 0;
+    const raw = counts[it.id];
+    const hasEntry = raw !== undefined && raw !== null && String(raw).trim() !== "";
+    const actual = hasEntry ? (Number(raw) || 0) : theo;
+    const rawP = Number(it.unitPrice) || 0;
+    const perU = (it.orderByCase && Number(it.bagSize) > 0) ? rawP / Number(it.bagSize) : rawP;
+    const diff = actual - theo;
+    const value = Math.round(actual * perU);
+    totalValue += value;
+    if (theo > 0 && Math.abs(diff / theo) > 0.10) alertCount++;
+    lines.push({
+      itemId: it.id, name: it.name, category: it.category || "未分類", unit: it.unit || "",
+      theoretical: theo, actual, diff, unitPrice: Math.round(perU * 100) / 100, value,
+    });
+    if (hasEntry && actual !== theo) changed = true;
+    return hasEntry ? { ...it, stock: actual } : it;
+  });
+
+  if (changed) await setState(c.tenant_id, "inventory", newInv);
+
+  const { data: sub, error: subErr } = await admin().from("stocktake_submissions").insert({
+    tenant_id: c.tenant_id, store_id: storeId, store_name: store?.name ?? "店舗",
+    submitted_by_app_user_id: c.app_user_id, submitted_by_name: c.name ?? "担当者",
+    item_count: lines.length, total_value: totalValue, alert_count: alertCount,
+  }).select("id, submitted_at").single();
+  if (subErr || !sub) { console.error(subErr); return err("internal", "提出履歴の保存に失敗しました", 500); }
+
+  const itemRows = lines.map((l) => ({
+    submission_id: sub.id, tenant_id: c.tenant_id, item_id: l.itemId, item_name: l.name,
+    category: l.category, unit: l.unit, theoretical_stock: l.theoretical, actual_stock: l.actual,
+    diff: l.diff, unit_price: l.unitPrice, value: l.value,
+  }));
+  const { error: itemsErr } = await admin().from("stocktake_items").insert(itemRows);
+  if (itemsErr) console.error(itemsErr); // 明細保存の失敗は提出自体をロールバックしない（ログのみ）
+
+  return json({
+    ok: true,
+    submission: {
+      id: sub.id, storeId, storeName: store?.name ?? "店舗", submittedAt: sub.submitted_at,
+      submittedBy: c.name ?? "担当者", lines, totalValue, alertCount, itemCount: lines.length,
+    },
+    inventory: changed ? newInv : undefined,
+  });
+}
+
+async function stocktakeHistory(c: AppClaims, req: Request): Promise<Response> {
+  const url = new URL(req.url);
+  const storeId = url.searchParams.get("storeId");
+  let q = admin().from("stocktake_submissions")
+    .select("id, store_id, store_name, submitted_by_name, submitted_at, item_count, total_value, alert_count")
+    .eq("tenant_id", c.tenant_id).order("submitted_at", { ascending: false }).limit(200);
+  if (c.app_role !== "hq") {
+    q = q.eq("store_id", normStoreId(c.store_id));
+  } else if (storeId) {
+    q = q.eq("store_id", storeId);
+  }
+  const { data: subs, error } = await q;
+  if (error) { console.error(error); return err("internal", "履歴の取得に失敗しました", 500); }
+
+  const ids = (subs ?? []).map((s: any) => s.id);
+  const itemsBySub: Record<string, any[]> = {};
+  if (ids.length) {
+    const { data: items } = await admin().from("stocktake_items")
+      .select("submission_id, item_id, item_name, category, unit, theoretical_stock, actual_stock, diff, unit_price, value")
+      .in("submission_id", ids);
+    for (const it of items ?? []) {
+      const k = (it as any).submission_id;
+      (itemsBySub[k] ??= []).push({
+        itemId: (it as any).item_id, name: (it as any).item_name, category: (it as any).category,
+        unit: (it as any).unit, theoretical: Number((it as any).theoretical_stock), actual: Number((it as any).actual_stock),
+        diff: Number((it as any).diff), unitPrice: Number((it as any).unit_price), value: Number((it as any).value),
+      });
+    }
+  }
+
+  const result = (subs ?? []).map((s: any) => ({
+    id: s.id, storeId: s.store_id, storeName: s.store_name, submittedAt: s.submitted_at,
+    submittedBy: s.submitted_by_name, itemCount: s.item_count, totalValue: s.total_value,
+    alertCount: s.alert_count, lines: itemsBySub[s.id] ?? [],
+  }));
+  return json({ data: result });
+}
+
+async function stocktakeDelete(c: AppClaims, id: string): Promise<Response> {
+  if (c.app_role !== "hq") return err("forbidden", "本部のみ削除できます", 403);
+  const { error } = await admin().from("stocktake_submissions").delete().eq("id", id).eq("tenant_id", c.tenant_id);
+  if (error) { console.error(error); return err("internal", "削除に失敗しました", 500); }
+  return json({ ok: true });
 }
 
 // ── AI プロキシ（既定: Gemini / 切替: Claude）。キーはサーバー秘匿。要認証 ──
@@ -378,9 +601,10 @@ Deno.serve(async (req) => {
   const m = req.method;
   try {
     if (m === "POST" && p[0] === "auth") {
-      if (p[1] === "honbu-login") return await honbuLogin(req);
-      if (p[1] === "store-login") return await storeLogin(req);
-      if (p[1] === "pin-login")   return await pinLogin(req);
+      if (p[1] === "honbu-login")   return await honbuLogin(req);
+      if (p[1] === "store-login")   return await storeLogin(req);
+      if (p[1] === "pin-login")     return await pinLogin(req);
+      if (p[1] === "manager-login") return await managerLogin(req);
       return err("not_found", "未対応の認証エンドポイント", 404);
     }
     if (m === "POST" && p[0] === "suppliers" && p[1] === "register") return await supplierRegister(req);
@@ -391,11 +615,16 @@ Deno.serve(async (req) => {
     if (!claims) return err("unauthorized", "トークンが無効です", 401);
 
     if (m === "POST" && p[0] === "qr" && p[1] === "issue") return await qrIssue(claims, req);
+    if (m === "POST" && p[0] === "users" && p[1] === "set-credentials") return await setUserCredentials(claims, req);
 
     if (m === "GET"  && p[0] === "bootstrap" && !p[1]) return await bootstrap(claims);
     if (m === "POST" && p[0] === "bootstrap" && p[1] === "reset") return await resetState(claims);
     if (m === "GET"  && p[0] === "state" && p[1]) return await getStateRes(claims, p[1]);
     if (m === "PUT"  && p[0] === "state" && p[1]) return await putStateRes(claims, p[1], req);
+
+    if (m === "POST"   && p[0] === "stocktake" && p[1] === "submit")  return await stocktakeSubmit(claims, req);
+    if (m === "GET"    && p[0] === "stocktake" && p[1] === "history") return await stocktakeHistory(claims, req);
+    if (m === "DELETE" && p[0] === "stocktake" && p[1])               return await stocktakeDelete(claims, p[1]);
 
     if (m === "POST" && p[0] === "ai" && p[1] === "chat")    return await aiChat(req);
     if (m === "POST" && p[0] === "ai" && p[1] === "analyze") return await aiAnalyze(req);
