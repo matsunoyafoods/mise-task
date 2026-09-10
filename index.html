@@ -640,9 +640,9 @@ function StaffMultiPickModal({title, subtitle, storeId, onConfirm, onClose}) {
 }
 
 function AmountVerifyModal({task, recipe, onConfirm, onCancel}) {
-  const [mode, setMode] = useState("confirm"); // "confirm" | "detail"
+  const [mode, setMode] = useState((recipe&&recipe.ingredients&&recipe.ingredients.some(x=>x&&x.random))?"detail":"confirm"); // "confirm" | "detail"
   const [inputs, setInputs] = useState(
-    recipe ? recipe.ingredients.reduce((a,ing)=>({...a,[ing.name]:String(ing.amount ?? "")}),{}) : {}
+    recipe ? recipe.ingredients.reduce((a,ing)=>({...a,[ing.name]:(ing&&ing.random)?"":String(ing.amount ?? "")}),{}) : {}
   );
 
   // レシピなし → ワンタップ完了（材料が登録されていれば表示し、完了時に在庫から減る）
@@ -718,8 +718,8 @@ function AmountVerifyModal({task, recipe, onConfirm, onCancel}) {
   // ── 詳細入力画面 ──
   const checks = recipe.ingredients.map(ing => {
     const actual = Number(inputs[ing.name]);
-    const ok = actual > 0 && Math.abs(actual - ing.amount) / ing.amount <= 0.05;
-    return {...ing, actual, ok, warn: actual > 0 && !ok};
+    const ok = ing.random ? actual > 0 : (actual > 0 && Math.abs(actual - ing.amount) / ing.amount <= 0.05);
+    return {...ing, actual, ok, warn: ing.random ? false : (actual > 0 && !ok)};
   });
   const allFilled = checks.every(c=>c.actual>0);
   const hasWarn = checks.some(c=>c.warn);
@@ -733,7 +733,7 @@ function AmountVerifyModal({task, recipe, onConfirm, onCancel}) {
           <div key={i} style={{marginBottom:14}}>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
               <span style={{fontSize:13,color:"#ccc",fontWeight:600}}>{ing.name}</span>
-              <span style={{fontSize:12,color:"#E85D04"}}>規定: {ing.amount}{ing.unit}</span>
+              <span style={{fontSize:12,color:ing.random?"#a78bfa":"#E85D04"}}>{ing.random?"🎲 ランダム（毎回入力）":"規定: "+ing.amount+ing.unit}</span>
             </div>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
               <input type="number" inputMode="decimal" placeholder="実際の使用量" value={inputs[ing.name]}
@@ -3825,7 +3825,7 @@ function TaskManagerView({routines, setRoutines, allPrepTasks, setAllPrepTasks, 
     const rec = r.recipeId ? recipes.find(x=>x.id===r.recipeId) : null;
     setForm({name:r.name,category:r.category,store:r.store,freq:r.freq,customDays:r.customDays||[],onceDate:r.onceDate||"",freeDates:r.freeDates||[],deadline:r.deadline,assignedTo:r.assignedTo,recipeId:r.recipeId||"",
       method: rec ? recipeMethodText(rec) : (r.method||""),
-      ingredients: (rec && Array.isArray(rec.ingredients) ? rec.ingredients : (r.ingredients||[])).map(x=>({itemId:x.itemId??null,name:x.name||"",amount:x.amount??"",unit:x.unit||""}))});
+      ingredients: (rec && Array.isArray(rec.ingredients) ? rec.ingredients : (r.ingredients||[])).map(x=>({itemId:x.itemId??null,name:x.name||"",amount:x.amount??"",unit:x.unit||"",random:!!x.random}))});
     setShowForm(true);
   };
   const saveRoutine = () => {
@@ -3835,8 +3835,8 @@ function TaskManagerView({routines, setRoutines, allPrepTasks, setAllPrepTasks, 
     // 材料（在庫から減る分）。prepのみ。itemIdまたは名前があり、数量>0のものだけ採用
     const cleanIngs = (form.category==="prep" ? (ingredients||[]) : [])
       .filter(x=>x && (x.itemId!=null || (x.name&&String(x.name).trim())) )
-      .map(x=>({itemId:x.itemId??null, name:String(x.name||"").trim(), amount:Number(x.amount)||0, unit:x.unit||""}))
-      .filter(x=>x.amount>0);
+      .map(x=>({itemId:x.itemId??null, name:String(x.name||"").trim(), amount:x.random?0:(Number(x.amount)||0), unit:x.unit||"", random:!!x.random}))
+      .filter(x=>x.amount>0 || x.random);
     // 手順・材料はレシピに保存。紐づくレシピがあれば更新、無く材料か手順があれば新規レシピを作成してレシピ一覧に表示
     let recipeId = form.recipeId || "";
     if (form.category==="prep" && setRecipes) {
@@ -3988,10 +3988,13 @@ function TaskManagerView({routines, setRoutines, allPrepTasks, setAllPrepTasks, 
                 <div key={idx} style={{display:"flex",gap:6,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}>
                   <InvPicker items={storeInv} value={ing.itemId} name={ing.name}
                     onPick={it=>setForm(p=>{const a=[...(p.ingredients||[])];a[idx]={...a[idx],itemId:it.id,name:it.name,unit:it.unit};return{...p,ingredients:a};})}/>
-                  <input type="number" inputMode="decimal" value={ing.amount} placeholder="数量"
+                  {ing.random
+                    ? <span style={{width:84,padding:"8px",background:"#140a24",border:"1px solid #4c1d95",color:"#a78bfa",borderRadius:8,fontSize:11,textAlign:"center",boxSizing:"border-box"}}>完了時に入力</span>
+                    : <input type="number" inputMode="decimal" value={ing.amount} placeholder="数量"
                     onChange={e=>setForm(p=>{const a=[...(p.ingredients||[])];a[idx]={...a[idx],amount:e.target.value};return{...p,ingredients:a};})}
-                    style={{width:84,padding:"8px",background:"#0c0c18",border:"1px solid #2a2a3a",color:"#eee",borderRadius:8,fontSize:13,textAlign:"right"}}/>
+                    style={{width:84,padding:"8px",background:"#0c0c18",border:"1px solid #2a2a3a",color:"#eee",borderRadius:8,fontSize:13,textAlign:"right"}}/>}
                   <span style={{fontSize:12,color:"#8b95a1",minWidth:26}}>{ing.unit||""}</span>
+                  <label style={{display:"flex",alignItems:"center",gap:3,fontSize:11,color:ing.random?"#a78bfa":"#8b95a1",cursor:"pointer",userSelect:"none"}}><input type="checkbox" checked={!!ing.random} onChange={e=>setForm(p=>{const a=[...(p.ingredients||[])];a[idx]={...a[idx],random:e.target.checked,amount:e.target.checked?"":a[idx].amount};return{...p,ingredients:a};})}/> 🎲 日によって量が変わる</label>
                   <button onClick={()=>setForm(p=>({...p,ingredients:(p.ingredients||[]).filter((_,j)=>j!==idx)}))}
                     style={{background:"none",border:"none",color:"#f87171",cursor:"pointer",fontSize:16,padding:"0 4px"}}>✕</button>
                 </div>
