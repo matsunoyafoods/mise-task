@@ -433,6 +433,9 @@ const Bar = ({v,max,color="#E85D04",h=4}) => (
   </div>
 );
 
+// 現場スタッフ（メニューを最小限にする役割）か
+const myRoleIsFrontStaff = (role) => role==="スタッフ" || role==="アルバイト";
+
 // 左メニュー用の線アイコン（外部ライブラリなし）
 const NAV_ICON_PATHS = {
   home:  ["M3 11l9-7 9 7", "M5 10v10h14V10", "M10 20v-5h4v5"],
@@ -1901,7 +1904,7 @@ function StoreSection({stores, setStores, users, setUsers, notify}) {
 }
 
 function StaffView({users, setUsers, stores, setStores, storeFilter, notify, resetAllData}) {
-  const ROLES = ["本部","店長","スタッフ","アルバイト"];
+  const ROLES = ["本部","店長","管理スタッフ","スタッフ","アルバイト"];
   const COLORS = ["#E85D04","#C9184A","#0077B6","#E1F5EE","#9B2226","#FBEAF0","#6D28D9","#E1F5EE","#b45309","#1d4ed8"];
   const [editForm, setEditForm] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -4254,7 +4257,7 @@ function TaskManagerView({routines, setRoutines, allPrepTasks, setAllPrepTasks, 
 // ─────────────────────────────────────────────────────────────────────────
 // TOP VIEW  直感的なメイン操作画面
 // ─────────────────────────────────────────────────────────────────────────
-function TopView({allPrepTasks, setAllPrepTasks, cleanTasks, setCleanTasks, inventory, setInventory, recipes, currentUserId, notify, storeFilter, routines=[], paletteDrag, setPaletteDrag, extDragTask, setExtDragTask, extDragOver, setExtDragOver, onDayChange, onStoreChange}) {
+function TopView({hideStockAlert=false, allPrepTasks, setAllPrepTasks, cleanTasks, setCleanTasks, inventory, setInventory, recipes, currentUserId, notify, storeFilter, routines=[], paletteDrag, setPaletteDrag, extDragTask, setExtDragTask, extDragOver, setExtDragOver, onDayChange, onStoreChange}) {
   const [activeDay, setActiveDay_]   = useState(0); // 0=今日, 1=明日, 2=明後日, 3=3日後
   const [activeStore, setActiveStore_] = useState(storeFilter || 1);
   const setActiveDay = (v) => { setActiveDay_(v); if(onDayChange) onDayChange(v); };
@@ -4569,8 +4572,8 @@ function TopView({allPrepTasks, setAllPrepTasks, cleanTasks, setCleanTasks, inve
           </div>
         </div>
 
-        {/* 在庫アラート */}
-        {lowStock.length>0 && (
+        {/* 在庫アラート（スタッフ・アルバイトには出さない） */}
+        {lowStock.length>0 && !hideStockAlert && (
           <div style={{background:"#FFFFFF",border:"1px solid #F5C2C0",borderRadius:12,padding:"10px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
             <span style={{fontSize:13,color:"#B42318",fontWeight:700,flexShrink:0}}>⚠ 在庫不足 {lowStock.length}品</span>
             <div style={{display:"flex",gap:6,flexWrap:"wrap",flex:1}}>
@@ -6232,13 +6235,16 @@ function AppInner() {
     {id:"ai_support", label:"AIサポート",             icon:"💬"},
   ];
 
-  // ロール別メニュー表示
-  //   本部=全部 / 店長=プラン・請求のみ非表示 / スタッフ=プラン・請求・評価・AI分析・AI自動入力 を非表示
+  // ロール別メニュー表示（見た目の整理。サーバー側の権限は従来どおり）
+  //   本部・店長=全部 / 管理スタッフ=プラン・スタッフ関係以外 / スタッフ・アルバイト=今日のやること＋開店・閉店チェックのみ
+  const STAFF_ONLY = ["top","ops"];
   const roleHide = {
-    "店長":     ["billing"],
-    "スタッフ":   ["billing","commission","ai_analysis","ai_input"],
-    "アルバイト": ["billing","commission","ai_analysis","ai_input"],
+    "店長":       [],
+    "管理スタッフ": ["billing","staff","staff_qr","commission"],
+    "スタッフ":     tabs.map(t=>t.id).filter(id=>!STAFF_ONLY.includes(id)),
+    "アルバイト":   tabs.map(t=>t.id).filter(id=>!STAFF_ONLY.includes(id)),
   };
+  const isFrontStaff = myRoleIsFrontStaff(currentUser?.role);
   const myRole = currentUser?.role;
   const hiddenTabs = (myRole && myRole!=="本部") ? (roleHide[myRole] || []) : [];
   const visibleTabs = tabs.filter(t=>!hiddenTabs.includes(t.id));
@@ -6262,6 +6268,10 @@ function AppInner() {
     .map(g=>({...g, kids:g.kids.filter(id=>visibleIds.includes(id))}))
     .filter(g=>g.kids.length>0);
   const activeGroup = visibleGroups.find(g=>g.kids.includes(view));
+  // 見せない画面が開いたままにならないよう、先頭の画面へ戻す
+  useEffect(() => {
+    if (visibleIds.length && !visibleIds.includes(view)) setView(visibleIds[0]);
+  }, [view, visibleIds.join(",")]);
 
   const getBadge = id => {
     if (id==="inventory" && lowStockCount>0) return lowStockCount;
@@ -6446,7 +6456,7 @@ function AppInner() {
         </div>
         <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",justifyContent:"flex-end"}}>
           {isHonbu && <div style={{padding:"3px 10px",background:"#EEEDFE",border:"1px solid #6D28D944",borderRadius:8,fontSize:13,color:"#6D28D9"}}>{selectedStoreId ? "🏪 "+( INITIAL_STORES.find(s=>s.id===selectedStoreId)?.name||"") : "👁 全店舗"}</div>}
-          {warnCount > 0 && <div style={{padding:"3px 10px",background:"#FFFFFF",border:"1px solid #F6CFAF",borderRadius:8,fontSize:13,color:"#A16207"}}>⚠ 差異 {warnCount}件</div>}
+          {warnCount > 0 && !isFrontStaff && <div style={{padding:"3px 10px",background:"#FFFFFF",border:"1px solid #F6CFAF",borderRadius:8,fontSize:13,color:"#A16207"}}>⚠ 差異 {warnCount}件</div>}
           {/* スタッフ選択 */}
           <select value={currentUserId!=null ? String(currentUserId) : ""} onChange={e=>{
               // IDは数値(スタッフ)とUUID(本部)が混在するため必ず文字列照合で本人を特定（Number化しない）
@@ -6596,7 +6606,7 @@ function AppInner() {
               })}
             </div>
           )}
-          {view==="top"       &&<TopView allPrepTasks={allPrepTasks} setAllPrepTasks={setAllPrepTasks} cleanTasks={cleanTasks} setCleanTasks={setCleanTasks} inventory={inventory} setInventory={setInventory} recipes={recipes} currentUserId={currentUserId} notify={notify} storeFilter={storeFilter} routines={routines} paletteDrag={paletteDrag} setPaletteDrag={setPaletteDrag} extDragTask={topDragTask} setExtDragTask={setTopDragTask} extDragOver={topDragOver} setExtDragOver={setTopDragOver} onDayChange={setTopActiveDay} onStoreChange={setTopActiveStore}/>}
+          {view==="top"       &&<TopView hideStockAlert={isFrontStaff} allPrepTasks={allPrepTasks} setAllPrepTasks={setAllPrepTasks} cleanTasks={cleanTasks} setCleanTasks={setCleanTasks} inventory={inventory} setInventory={setInventory} recipes={recipes} currentUserId={currentUserId} notify={notify} storeFilter={storeFilter} routines={routines} paletteDrag={paletteDrag} setPaletteDrag={setPaletteDrag} extDragTask={topDragTask} setExtDragTask={setTopDragTask} extDragOver={topDragOver} setExtDragOver={setTopDragOver} onDayChange={setTopActiveDay} onStoreChange={setTopActiveStore}/>}
           {view==="dashboard" && <Dashboard allPrepTasks={allPrepTasks} cleanTasks={cleanTasks} hqTasks={hqTasks} setHqTasks={setHqTasks} currentUserId={currentUserId} inventory={inventory} orders={orders} storeFilter={storeFilter} notify={notify}/>}
           {view==="prep"      && <PrepView allTasks={allPrepTasks} setAllTasks={setAllPrepTasks} currentUserId={currentUserId} recipes={recipes} notify={notify} setInventory={setInventory} storeFilter={storeFilter}/>}
           {view==="clean"     && <CleanView tasks={cleanTasks} setTasks={setCleanTasks} currentUserId={currentUserId} notify={notify} storeFilter={storeFilter}/>}
