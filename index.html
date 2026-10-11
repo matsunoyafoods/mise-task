@@ -107,6 +107,9 @@ const api = {
     setCredentials: (userId, email, password) => api._fetch(`/users/set-credentials`, { method: "POST", body: JSON.stringify({ userId, email, password }) }),
     // 店舗タブレットが短命QRを発行（要ログイン: 店長/本部） → {qrToken, expiresAt}
     issueQr: (storeId) => api._fetch(`/qr/issue`, { method: "POST", body: JSON.stringify({ storeId }) }),
+    // LINE発注bot（店舗ごと）
+    lineSend: (storeId, supplierId, text) => api._fetch(`/line/send`, { method: "POST", body: JSON.stringify({ storeId, supplierId, text }) }),
+    lineQuota: (storeId) => api._fetch(`/line/quota?storeId=${encodeURIComponent(storeId)}`),
     // お店アカウント端末では、だれに切り替えていてもお店アカウントの権限でQRを発行する
     issueQrWith: (storeId, token) => api._fetch(`/qr/issue`, { method: "POST", body: JSON.stringify({ storeId }),
       headers: { "Content-Type": "application/json", Authorization: "Bearer " + token } }),
@@ -1008,7 +1011,7 @@ function IssueSupplierModal({onClose, setSuppliers, notify}) {
 // ─── 業者を追加／編集／URL共有／商品ひも付け（お店側の一連の流れ）───
 function SupplierWizard({mode, suppliers, setSuppliers, inventory, setInventory, storeFilter, notify, onClose}) {
   const initSup = mode.sup || null;
-  const [step, setStep] = useState(mode.type==="new" ? "choose" : mode.type==="edit" ? "manual" : mode.type==="share" ? "share" : "items");
+  const [step, setStep] = useState(mode.type==="new" ? "choose" : mode.type==="edit" ? "manual" : mode.type==="share" ? "share" : mode.type==="line" ? "line" : "items");
   const [supId, setSupId] = useState(initSup?.id || null);
   const sup = suppliers.find(s=>s.id===supId) || initSup;
   const [f, setF] = useState(()=>({
@@ -1053,6 +1056,16 @@ function SupplierWizard({mode, suppliers, setSuppliers, inventory, setInventory,
     if (step==="share" && sup && !sup.token) { const t=newToken(); setSuppliers(p=>p.map(x=>x.id===sup.id?{...x,token:t}:x)); }
   }, [step, sup?.id, sup?.token]);
   const tok = sup?.token;
+  // LINEグループ登録コード（MT-4けた）。無ければ作って保存
+  useEffect(() => {
+    if (step==="line" && sup && !sup.lineCode) {
+      const used = new Set((suppliers||[]).map(x=>x.lineCode).filter(Boolean));
+      let c; do { c = "MT-"+String(Math.floor(1000+Math.random()*9000)); } while (used.has(c));
+      setSuppliers(p=>p.map(x=>x.id===sup.id?{...x,lineCode:c}:x));
+    }
+  }, [step, sup?.id, sup?.lineCode]);
+  const storeName = (INITIAL_STORES||[]).find(s=>String(s.id)===String(storeFilter||""))?.name;
+  const lineLinked = storeFilter!=null && sup?.lineGroups?.[String(storeFilter)];
   const regUrl = (sup && tok) ? PUBLIC_ORIGIN+"/supplier-reg.html?token="+encodeURIComponent(tok)+"&name="+encodeURIComponent(sup.name||"") : "";
   const saveItems = () => {
     if (!sup) return onClose();
@@ -1134,6 +1147,27 @@ function SupplierWizard({mode, suppliers, setSuppliers, inventory, setInventory,
           <Btn onClick={onClose} color="#ECE9E1" style={{flex:1,padding:"12px"}}>閉じる</Btn>
           <Btn onClick={()=>setStep("items")} color="#E8792F" style={{flex:2,padding:"12px",fontSize:15}}>この業者の商品を選ぶ →</Btn>
         </div>
+      </div>)}
+
+      {step==="line" && sup && (<div>
+        <H t={sup.name+" さんのLINEグループ"} sub={storeFilter==null ? "店舗を選んでから設定してください（本部は右上で店舗を選びます）。" : (storeName||"この店舗")+" のbotが、このグループに発注文を投稿します。"}/>
+        {storeFilter!=null && (<>
+          {lineLinked
+            ? <div style={{background:"#EAF3DE",color:"#2F7A1F",borderRadius:12,padding:"12px 14px",fontSize:15,fontWeight:700,marginBottom:14}}>✓ 登録済みです。発注するとこのグループに届きます。</div>
+            : <div style={{background:"#FDF3DF",color:"#A16207",borderRadius:12,padding:"12px 14px",fontSize:14,marginBottom:14}}>まだ登録されていません。下の手順で登録してください。</div>}
+          <ol style={{paddingLeft:20,fontSize:15,color:"#2C2C2A",lineHeight:1.9,marginBottom:14}}>
+            <li>LINEで、{sup.name}さん・店長などのグループを作る</li>
+            <li>そのグループに「{storeName||"この店舗"}」のLINE公式アカウント（bot）を招待する</li>
+            <li>グループに、次の登録コードを送る</li>
+          </ol>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:12,background:"#FBFAF7",border:"2px dashed #E8792F",borderRadius:14,padding:"16px",marginBottom:10}}>
+            <span style={{fontSize:28,fontWeight:800,letterSpacing:".08em",color:"#2C2C2A"}}>{sup.lineCode || "作成中…"}</span>
+            {sup.lineCode && <button onClick={()=>{ try{ navigator.clipboard.writeText(sup.lineCode).then(()=>notify("✓ コードをコピーしました")); }catch{} }}
+              style={{padding:"8px 14px",background:"#E8792F",color:"#fff",border:"none",borderRadius:999,fontSize:14,fontWeight:800,cursor:"pointer"}}>コピー</button>}
+          </div>
+          <div style={{fontSize:13,color:"#5F5D58",lineHeight:1.7,marginBottom:14}}>botが「登録しました」と返事をすれば完了です。この画面は、アプリを開き直すと「✓ 登録済み」に変わります。<br/>送信数のお知らせを受けたいグループ（店長だけのグループなど）では「通知先に設定」と送ってください。</div>
+        </>)}
+        <Btn onClick={onClose} color="#ECE9E1" style={{width:"100%",padding:"12px"}}>閉じる</Btn>
       </div>)}
 
       {step==="items" && sup && (<div>
@@ -3135,13 +3169,14 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
     notify(`✓ ${sup.name} への発注を記録しました。${methodLabels}で送信してください`);
 
     setSelectedItems({});
-    setSentInfo({sup, items, text: buildOrderText(sup, items)});
+    setSentInfo({sup, items, text: buildOrderText(sup, items), storeId: storeFilter || null});
     setConfirmOrder(null);
   };
 
   // 発注内容をテキスト化
   const buildOrderText = (sup, items) => {
-    const lines = [`【発注書】${new Date().toLocaleDateString("ja-JP")}`, `${sup.name} 御中`, ""];
+    const storeName = (INITIAL_STORES||[]).find(s=>String(s.id)===String(storeFilter||""))?.name;
+    const lines = [`【発注書】${new Date().toLocaleDateString("ja-JP")}`, `${sup.name} 御中`, ...(storeName?[`発注元: ${storeName}`]:[]), ""];
     items.forEach(i => lines.push(`・${i.name}  ${getQty(i).toLocaleString()}${orderUnitOf(i)}${byCase(i)?`（約${(getQty(i)*caseSize(i)).toLocaleString()}${i.unit}）`:""}`));
     lines.push("", "以上、よろしくお願いいたします。");
     return lines.join("\n");
@@ -3201,7 +3236,26 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
   return (
     <div>
       {sentInfo && (()=>{
-        const {sup, items, text} = sentInfo;
+        const {sup, items, text, storeId, botState} = sentInfo;
+        // 登録コードを出した業者は、画面を開き直していなくてもbot送信を試せる（サーバー側で登録済みか判定）
+        const linkedGroup = storeId!=null && (sup.lineGroups?.[String(storeId)] || sup.lineCode);
+        const sendByBot = async () => {
+          setSentInfo(p=>({...p, botState:"sending"}));
+          try {
+            const r = await api.auth.lineSend(storeId, sup.id, text);
+            const q = r?.quota;
+            const warn = q?.limit ? (q.used/q.limit >= 0.8 ? `（今月 ${q.used}/${q.limit} 通）` : "") : "";
+            notify(`✓ ${sup.name}さんのLINEグループに送りました${warn}`);
+            setSentInfo(null);
+          } catch (e) {
+            const code = e?.payload?.error?.code;
+            const msg = code==="line_quota" ? "今月のLINE送信の上限に達しました。下の方法で送ってください。"
+              : code==="line_not_linked" ? "この業者のLINEグループがまだ登録されていません。下の方法で送ってください。"
+              : code==="line_unconfigured" ? "この店舗のLINE botがまだ設定されていません。下の方法で送ってください。"
+              : "LINEへの送信に失敗しました。下の方法で送ってください。";
+            setSentInfo(p=>({...p, botState:"failed", botMsg: msg}));
+          }
+        };
         const links = buildSendLinks(sup, items, text); // 下の文章（直した場合は直した後）で開く
         const MCOL={email:"#0077B6",line:"#06C755",instagram:"#E1306C",twitter:"#2C2C2A",tel:"#0F6E56",fax:"#5F5D58",other:"#5F5D58"};
         const ICON={email:"📧",line:"💬",instagram:"📸",twitter:"✕",tel:"📞",fax:"📠",other:"📝"};
@@ -3214,6 +3268,14 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
             <textarea value={text} onChange={e=>setSentInfo(p=>({...p,text:e.target.value}))}
               rows={Math.min(14, Math.max(6, String(text).split("\n").length+1))}
               style={{width:"100%",padding:"12px",background:"#FBFAF7",border:"1px solid #E4E0D6",borderRadius:12,fontSize:15,lineHeight:1.6,color:"#2C2C2A",fontFamily:"inherit",resize:"vertical",marginBottom:14}}/>
+            {linkedGroup && botState!=="failed" && (
+              <button onClick={sendByBot} disabled={botState==="sending"}
+                style={{width:"100%",padding:"16px",marginBottom:10,background:"#06C755",color:"#fff",border:"none",borderRadius:12,fontSize:17,fontWeight:800,cursor:"pointer",opacity:botState==="sending"?0.6:1}}>
+                {botState==="sending" ? "送信中…" : "💬 LINEグループに送る（botが投稿）"}
+              </button>
+            )}
+            {botState==="failed" && <div style={{background:"#FDEDEC",color:"#B42318",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:10}}>{sentInfo.botMsg}</div>}
+            {linkedGroup && botState!=="failed" && <div style={{fontSize:13,color:"#6E6C66",textAlign:"center",margin:"2px 0 10px"}}>うまくいかないときは、下の方法でも送れます</div>}
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
               {links.map(lk=>(
                 lk.url ? (
@@ -3511,6 +3573,10 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
                       <button onClick={()=>setSupWizard({type:"edit",sup})}
                         style={{padding:"6px 12px",background:"#FFFFFF",border:"1px solid #EDE3D6",borderRadius:8,color:"#45433F",fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
                         ✏️ 編集
+                      </button>
+                      <button onClick={()=>setSupWizard({type:"line",sup})}
+                        style={{padding:"6px 12px",background:(storeFilter!=null&&sup.lineGroups?.[String(storeFilter)])?"#EAF3DE":"#FFFFFF",border:"1px solid "+((storeFilter!=null&&sup.lineGroups?.[String(storeFilter)])?"#C0DD97":"#EDE3D6"),borderRadius:8,color:(storeFilter!=null&&sup.lineGroups?.[String(storeFilter)])?"#2F7A1F":"#45433F",fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                        {(storeFilter!=null&&sup.lineGroups?.[String(storeFilter)]) ? "💬 LINEグループ ✓" : "💬 LINEグループ"}
                       </button>
                       <button onClick={()=>setSupWizard({type:"share",sup})}
                         style={{padding:"6px 12px",background:"#FFFFFF",border:"1px solid #EDE3D6",borderRadius:8,color:"#45433F",fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>

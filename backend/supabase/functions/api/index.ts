@@ -16,6 +16,7 @@
 //   POST /stocktake/submit    (Bearer) { storeId, counts:{itemId:実数} } -> 在庫を実数で上書き＋履歴保存
 //   GET  /stocktake/history   (Bearer) ?storeId= -> 提出履歴（本部=全店 / それ以外=自店のみ）
 //   DELETE /stocktake/:id     (Bearer, hq) 提出履歴を削除
+//   POST /line/webhook/:tenantId/:storeId (公開・LINE署名検証) / POST /line/send / GET /line/quota (LINE発注bot)
 //   POST /billing/*           501 (Phase 3)
 // ============================================================================
 import { corsHeaders, err, json } from "../_shared/cors.ts";
@@ -515,6 +516,150 @@ async function stocktakeDelete(c: AppClaims, id: string): Promise<Response> {
   return json({ ok: true });
 }
 
+// ── LINE（店舗ごとのbotが、業者さんとのLINEグループに発注文を投稿する）──────────
+//   シークレット: LINE_TOKEN_<店舗番号> / LINE_SECRET_<店舗番号>
+//     （無ければ LINE_CHANNEL_ACCESS_TOKEN / LINE_CHANNEL_SECRET を共通で使う）
+//   POST /line/webhook/:tenantId/:storeId  (公開・LINEの署名で検証) グループ参加・登録コード・通知先設定
+//   POST /line/send   (要認証) { storeId, supplierId, text } → その業者のグループへbotが投稿
+//   GET  /line/quota  (要認証) ?storeId= → 今月の送信数と上限
+//   業者とグループの結び付き: suppliers[].lineCode（MT-1234）/ suppliers[].lineGroups[店舗番号] = groupId
+//   店舗ごとの設定: KV "lineConfig" { [店舗番号]: { notifyGroupId, warnedMonth } }
+const LINE_API = "https://api.line.me/v2/bot";
+const lineToken = (storeId: string) =>
+  Deno.env.get(`LINE_TOKEN_${storeId}`) || Deno.env.get("LINE_CHANNEL_ACCESS_TOKEN") || "";
+const lineSecret = (storeId: string) =>
+  Deno.env.get(`LINE_SECRET_${storeId}`) || Deno.env.get("LINE_CHANNEL_SECRET") || "";
+const jstMonth = () => new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 7);
+
+async function lineCall(storeId: string, path: string, init: RequestInit = {}): Promise<Response> {
+  const t = lineToken(storeId);
+  if (!t) throw new Error("line_unconfigured");
+  return await fetch(LINE_API + path, {
+    ...init,
+    headers: { Authorization: `Bearer ${t}`, "Content-Type": "application/json", ...(init.headers ?? {}) },
+  });
+}
+async function lineReply(storeId: string, replyToken: string, text: string) {
+  try {
+    await lineCall(storeId, "/message/reply", { method: "POST", body: JSON.stringify({ replyToken, messages: [{ type: "text", text }] }) });
+  } catch (e) { console.error("line reply failed", e); }
+}
+async function linePush(storeId: string, to: string, text: string): Promise<Response> {
+  return await lineCall(storeId, "/message/push", { method: "POST", body: JSON.stringify({ to, messages: [{ type: "text", text: text.slice(0, 4900) }] }) });
+}
+async function lineQuota(storeId: string): Promise<{ limit: number | null; used: number }> {
+  const [q, c] = await Promise.all([lineCall(storeId, "/message/quota"), lineCall(storeId, "/message/quota/consumption")]);
+  const qj = await q.json().catch(() => ({}));
+  const cj = await c.json().catch(() => ({}));
+  return { limit: qj?.type === "limited" ? Number(qj.value) : null, used: Number(cj?.totalUsage) || 0 };
+}
+async function verifyLineSignature(secret: string, raw: string, sig: string | null): Promise<boolean> {
+  if (!secret || !sig) return false;
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(raw)));
+  const expected = btoa(String.fromCharCode(...mac));
+  if (expected.length !== sig.length) return false;
+  let d = 0;
+  for (let i = 0; i < expected.length; i++) d |= expected.charCodeAt(i) ^ sig.charCodeAt(i);
+  return d === 0;
+}
+async function storeNameOf(tenantId: string, storeId: string): Promise<string> {
+  const stores = ((await getState(tenantId, "stores")) ?? []) as any[];
+  return stores.find((s) => String(s.id) === String(storeId))?.name ?? "店舗";
+}
+
+async function lineWebhook(req: Request, tenantId: string, storeId: string): Promise<Response> {
+  const raw = await req.text();
+  if (!(await verifyLineSignature(lineSecret(storeId), raw, req.headers.get("x-line-signature")))) {
+    return err("bad_signature", "署名が一致しません", 401);
+  }
+  let payload: any = {};
+  try { payload = JSON.parse(raw); } catch { /* 空 */ }
+  for (const ev of payload?.events ?? []) {
+    const groupId = ev?.source?.type === "group" ? ev.source.groupId : (ev?.source?.type === "room" ? ev.source.roomId : null);
+    if (ev.type === "join" && groupId) {
+      await lineReply(storeId, ev.replyToken,
+        "参加しました。このグループを発注先として使うには、アプリの業者一覧「LINEグループ」に出ている登録コード（例: MT-1234）をこのグループに送ってください。");
+      continue;
+    }
+    if (ev.type !== "message" || ev.message?.type !== "text" || !groupId) continue;
+    const text = String(ev.message.text || "").trim();
+
+    if (text === "通知先に設定") {
+      const cfg = ((await getState(tenantId, "lineConfig")) ?? {}) as Record<string, any>;
+      cfg[storeId] = { ...(cfg[storeId] ?? {}), notifyGroupId: groupId };
+      await setState(tenantId, "lineConfig", cfg);
+      await lineReply(storeId, ev.replyToken, "このグループを、送信数のお知らせ先に設定しました。");
+      continue;
+    }
+
+    const m = text.match(/MT-?(\d{4})/i);
+    if (!m) continue; // 通常の会話には反応しない
+    const code = "MT-" + m[1];
+    const suppliers = ((await getState(tenantId, "suppliers")) ?? []) as any[];
+    const idx = suppliers.findIndex((s) => String(s.lineCode || "").toUpperCase() === code);
+    if (idx < 0) {
+      await lineReply(storeId, ev.replyToken, `登録コード ${code} が見つかりませんでした。アプリに出ているコードをご確認ください。`);
+      continue;
+    }
+    const sp = suppliers[idx];
+    suppliers[idx] = { ...sp, lineGroups: { ...(sp.lineGroups ?? {}), [storeId]: groupId } };
+    await setState(tenantId, "suppliers", suppliers);
+    const storeName = await storeNameOf(tenantId, storeId);
+    await lineReply(storeId, ev.replyToken,
+      `✓ このグループを「${sp.companyName || sp.name}」さんの発注グループとして登録しました（${storeName}）。今後の発注はここに届きます。`);
+  }
+  return json({ ok: true });
+}
+
+async function lineSend(c: AppClaims, req: Request): Promise<Response> {
+  const b = await body(req) as { storeId?: unknown; supplierId?: unknown; text?: string };
+  if (b.storeId == null || b.supplierId == null || !String(b.text || "").trim()) return err("invalid_input", "storeId / supplierId / text が必要です");
+  const storeId = String(b.storeId);
+  if (c.app_role !== "hq" && String(c.store_id) !== storeId) return err("forbidden", "自店舗以外からは送れません", 403);
+  if (!lineToken(storeId)) return err("line_unconfigured", "この店舗のLINE botが設定されていません", 503);
+  const suppliers = ((await getState(c.tenant_id, "suppliers")) ?? []) as any[];
+  const sp = suppliers.find((s) => String(s.id) === String(b.supplierId));
+  const groupId = sp?.lineGroups?.[storeId];
+  if (!groupId) return err("line_not_linked", "この業者のLINEグループがまだ登録されていません", 409);
+
+  let quota: { limit: number | null; used: number } | null = null;
+  try { quota = await lineQuota(storeId); } catch (e) { console.error("quota check failed", e); }
+  if (quota?.limit != null && quota.used >= quota.limit) {
+    return json({ error: { code: "line_quota", message: "今月のLINE送信の上限に達しました" }, quota }, 429);
+  }
+  const r = await linePush(storeId, groupId, String(b.text));
+  if (!r.ok) {
+    const detail = await r.json().catch(() => ({}));
+    console.error("line push failed", r.status, detail);
+    return json({ error: { code: r.status === 429 ? "line_quota" : "line_failed", message: "LINEへの送信に失敗しました" }, status: r.status }, 502);
+  }
+  // 8割を超えたら、通知先グループに月1回だけお知らせ
+  if (quota?.limit && (quota.used + 1) / quota.limit >= 0.8) {
+    try {
+      const cfg = ((await getState(c.tenant_id, "lineConfig")) ?? {}) as Record<string, any>;
+      const sc = cfg[storeId] ?? {};
+      const month = jstMonth();
+      if (sc.notifyGroupId && sc.warnedMonth !== month) {
+        const storeName = await storeNameOf(c.tenant_id, storeId);
+        await linePush(storeId, sc.notifyGroupId,
+          `【お知らせ】${storeName}のLINE発注の送信数が今月 ${quota.used + 1} / ${quota.limit} 通になりました。上限に達するとbotから送れなくなり、アプリでは手動送信に切り替わります。`);
+        cfg[storeId] = { ...sc, warnedMonth: month };
+        await setState(c.tenant_id, "lineConfig", cfg);
+      }
+    } catch (e) { console.error("quota notice failed", e); }
+  }
+  return json({ ok: true, quota: quota ? { ...quota, used: quota.used + 1 } : null });
+}
+
+async function lineQuotaRes(c: AppClaims, req: Request): Promise<Response> {
+  const storeId = new URL(req.url).searchParams.get("storeId") || String(c.store_id ?? "");
+  if (!storeId) return err("invalid_input", "storeId が必要です");
+  if (!lineToken(storeId)) return json({ configured: false });
+  try { return json({ configured: true, quota: await lineQuota(storeId) }); }
+  catch { return json({ configured: true, quota: null }); }
+}
+
 // ── AI プロキシ（既定: Gemini / 切替: Claude）。キーはサーバー秘匿。要認証 ──
 //   フロントは Anthropic 形式の {messages, system} を送り、{content:[{text}]} を期待。
 //   どのプロバイダでもこの形に正規化して返す。
@@ -610,6 +755,7 @@ Deno.serve(async (req) => {
     if (m === "POST" && p[0] === "suppliers" && p[1] === "register") return await supplierRegister(req);
     if (m === "POST" && p[0] === "suppliers" && p[1] === "price-update") return await supplierPriceUpdate(req);
     if (m === "POST" && p[0] === "qr" && p[1] === "login") return await qrLogin(req);
+    if (m === "POST" && p[0] === "line" && p[1] === "webhook" && p[2] && p[3]) return await lineWebhook(req, p[2], p[3]);
 
     const claims = await getClaims(req);
     if (!claims) return err("unauthorized", "トークンが無効です", 401);
@@ -628,6 +774,9 @@ Deno.serve(async (req) => {
 
     if (m === "POST" && p[0] === "ai" && p[1] === "chat")    return await aiChat(req);
     if (m === "POST" && p[0] === "ai" && p[1] === "analyze") return await aiAnalyze(req);
+
+    if (m === "POST" && p[0] === "line" && p[1] === "send")  return await lineSend(claims, req);
+    if (m === "GET"  && p[0] === "line" && p[1] === "quota") return await lineQuotaRes(claims, req);
 
     if (p[0] === "billing") return err("not_implemented", "課金は Phase 3 で実装予定です", 501);
 
