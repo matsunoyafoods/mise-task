@@ -6582,7 +6582,7 @@ function AppInner() {
                 <Sec skey="prep"   label="🔪 仕込み"   color="#E85D04" items={prepItems}/>
                 <Sec skey="clean"  label="✦ クリーン"  color="#C9184A" items={cleanItems}/>
                 <Sec skey="custom" label="＋ カスタム" color="#0077B6" items={customItems}/>
-                <div style={{fontSize:11,color:"#5a6472",padding:"6px 10px 0",lineHeight:1.5}}>※ そうじは「仕込み・そうじ」→「そうじ」で作った項目が並びます。新しい項目はカスタムから追加できます。</div>
+                {!isFrontStaff && <div style={{fontSize:11,color:"#5a6472",padding:"6px 10px 0",lineHeight:1.5}}>※ そうじは「仕込み・そうじ」→「そうじ」で作った項目が並びます。新しい項目はカスタムから追加できます。</div>}
               </div>
             );
           })()}
