@@ -13,16 +13,16 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      background: #07070f;
-      color: #e8e8f0;
+      background: #F7F5F0;
+      color: #2C2C2A;
       font-family: 'Noto Sans JP', sans-serif;
       min-height: 100vh;
     }
     input { font-family: inherit; }
     button { font-family: inherit; }
     ::-webkit-scrollbar { width: 4px; }
-    ::-webkit-scrollbar-track { background: #0c0c18; }
-    ::-webkit-scrollbar-thumb { background: #2a2a3a; border-radius: 4px; }
+    ::-webkit-scrollbar-track { background: #FFFFFF; }
+    ::-webkit-scrollbar-thumb { background: #ECE9E1; border-radius: 4px; }
   </style>
 </head>
 <body>
@@ -113,7 +113,7 @@ const METHODS = {
     ]
   },
   twitter: {
-    icon: "✕", label: "X (Twitter)", color: "#aaa",
+    icon: "✕", label: "X (Twitter)", color: "#5F5D58",
     inputLabel: "X（旧Twitter）のユーザー名",
     placeholder: "例: @your_account",
     field: "twitterId",
@@ -125,7 +125,7 @@ const METHODS = {
     ]
   },
   other: {
-    icon: "📝", label: "その他", color: "#6b7280",
+    icon: "📝", label: "その他", color: "#6E6C66",
     inputLabel: "受注方法（自由記入）",
     placeholder: "例: FAX 03-1234-5678 / チャットワーク / Slack など",
     field: "otherDesc",
@@ -232,20 +232,20 @@ function SupplierRegPage() {
               <div style={{
                 width: 32, height: 32, borderRadius: "50%",
                 display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 13, fontWeight: 800,
-                background: done ? "#6D28D9" : active ? "#a78bfa" : "#1a1a2a",
-                color: "#fff",
-                border: active ? "2px solid #a78bfa" : "2px solid transparent",
+                fontSize: 14, fontWeight: 800,
+                background: done ? "#E8792F" : active ? "#F2B98F" : "#ECE9E1",
+                color: "#2C2C2A",
+                border: active ? "2px solid #F2B98F" : "2px solid transparent",
                 transition: "all .2s"
               }}>
                 {done ? "✓" : n}
               </div>
-              <span style={{ fontSize: 10, color: active ? "#a78bfa" : done ? "#6D28D9" : "#6b7280", whiteSpace: "nowrap" }}>
+              <span style={{ fontSize: 12, color: active ? "#E8792F" : done ? "#E8792F" : "#6E6C66", whiteSpace: "nowrap" }}>
                 {label}
               </span>
             </div>
             {i < 2 && (
-              <div style={{ flex: 1, height: 2, background: step > n ? "#6D28D9" : "#1a1a2a", margin: "0 6px", marginBottom: 18, transition: "background .3s" }} />
+              <div style={{ flex: 1, height: 2, background: step > n ? "#E8792F" : "#ECE9E1", margin: "0 6px", marginBottom: 18, transition: "background .3s" }} />
             )}
           </React.Fragment>
         );
@@ -254,26 +254,26 @@ function SupplierRegPage() {
   );
 
   return (
-    <div style={{ minHeight: "100vh", background: "#07070f", display: "flex", flexDirection: "column", alignItems: "center", padding: "24px 16px 48px" }}>
+    <div style={{ minHeight: "100vh", background: "#F7F5F0", display: "flex", flexDirection: "column", alignItems: "center", padding: "24px 16px 48px" }}>
 
       {/* ヘッダー */}
       <div style={{ width: "100%", maxWidth: 480, marginBottom: 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg,#6D28D9,#E85D04)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg,#E8792F,#E85D04)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>
             🍜
           </div>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 800, color: "#fff", letterSpacing: ".05em" }}>MISE TASK</div>
-            <div style={{ fontSize: 10, color: "#6b7280" }}>業者情報登録ポータル</div>
+            <div style={{ fontSize: 14, fontWeight: 800, color: "#2C2C2A", letterSpacing: ".05em" }}>MISE TASK</div>
+            <div style={{ fontSize: 12, color: "#6E6C66" }}>業者情報登録ポータル</div>
           </div>
         </div>
       </div>
 
       {/* 値上げ表アップロード */}
       {supplierLoaded && (
-      <div style={{ width: "100%", maxWidth: 480, background: "#0c0c18", border: "1px solid #1e1e2e", borderRadius: 20, padding: "24px 24px", marginBottom: 16 }}>
-        <div style={{ fontSize: 16, fontWeight: 800, color: "#fff", marginBottom: 4 }}>価格表のアップロード</div>
-        <div style={{ fontSize: 12, color: "#8b95a1", marginBottom: 16, lineHeight: 1.6 }}>
+      <div style={{ width: "100%", maxWidth: 480, background: "#FFFFFF", border: "1px solid #E4E0D6", borderRadius: 20, padding: "24px 24px", marginBottom: 16 }}>
+        <div style={{ fontSize: 16, fontWeight: 800, color: "#2C2C2A", marginBottom: 4 }}>価格表のアップロード</div>
+        <div style={{ fontSize: 13, color: "#5F5D58", marginBottom: 16, lineHeight: 1.6 }}>
           値上げ・価格改定の表（画像 / PDF）を送るだけで、登録済み商品の単価を自動で更新します。担当者の手入力は不要です。
         </div>
 
@@ -281,37 +281,37 @@ function SupplierRegPage() {
           onChange={e => { setPriceFile(e.target.files[0] || null); setPriceResult(null); setPriceErr(""); }} />
 
         <button onClick={() => priceFileRef.current && priceFileRef.current.click()}
-          style={{ width: "100%", padding: "14px", borderRadius: 12, border: "1px dashed #3a3a52", background: "#11111f", color: "#c7d0db", fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 12 }}>
+          style={{ width: "100%", padding: "14px", borderRadius: 12, border: "1px dashed #E4E0D6", background: "#F4F2EC", color: "#45433F", fontSize: 14, fontWeight: 700, cursor: "pointer", marginBottom: 12 }}>
           {priceFile ? `📄 ${priceFile.name}` : "＋ ファイルを選択（画像 / PDF）"}
         </button>
 
         {priceFile && (
           <button onClick={uploadPriceList} disabled={priceLoading}
-            style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", background: priceLoading ? "#3a3a52" : "linear-gradient(135deg,#6D28D9,#E85D04)", color: "#fff", fontSize: 14, fontWeight: 800, cursor: priceLoading ? "default" : "pointer" }}>
+            style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", background: priceLoading ? "#3a3a52" : "linear-gradient(135deg,#E8792F,#E85D04)", color: "#fff", fontSize: 15, fontWeight: 800, cursor: priceLoading ? "default" : "pointer" }}>
             {priceLoading ? "AIが読み取り中…" : "送信して単価を更新"}
           </button>
         )}
 
-        {priceErr && <div style={{ marginTop: 12, fontSize: 12, color: "#f87171" }}>{priceErr}</div>}
+        {priceErr && <div style={{ marginTop: 12, fontSize: 13, color: "#B42318" }}>{priceErr}</div>}
 
         {priceResult && (
           <div style={{ marginTop: 16 }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: "#34d399", marginBottom: 8 }}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: "#34d399", marginBottom: 8 }}>
               ✓ 完了：{priceResult.readCount || 0}件読み取り / {(priceResult.changed || []).length}件更新
             </div>
             {(priceResult.changed || []).length === 0 ? (
-              <div style={{ fontSize: 12, color: "#8b95a1" }}>変更のある単価はありませんでした。</div>
+              <div style={{ fontSize: 13, color: "#5F5D58" }}>変更のある単価はありませんでした。</div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {priceResult.changed.map((c, i) => (
-                  <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#11111f", border: "1px solid #1e1e2e", borderRadius: 8, padding: "8px 12px" }}>
-                    <span style={{ fontSize: 12, color: "#e5e7eb", fontWeight: 700 }}>{c.itemName}</span>
-                    <span style={{ fontSize: 12, color: "#8b95a1" }}>
-                      ¥{c.oldPrice} → <span style={{ color: c.newPrice > c.oldPrice ? "#f87171" : "#34d399", fontWeight: 800 }}>¥{c.newPrice}</span>
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#F4F2EC", border: "1px solid #E4E0D6", borderRadius: 8, padding: "8px 12px" }}>
+                    <span style={{ fontSize: 13, color: "#2C2C2A", fontWeight: 700 }}>{c.itemName}</span>
+                    <span style={{ fontSize: 13, color: "#5F5D58" }}>
+                      ¥{c.oldPrice} → <span style={{ color: c.newPrice > c.oldPrice ? "#B42318" : "#34d399", fontWeight: 800 }}>¥{c.newPrice}</span>
                     </span>
                   </div>
                 ))}
-                <div style={{ fontSize: 11, color: "#6b7280", marginTop: 4 }}>本部に通知しました。</div>
+                <div style={{ fontSize: 13, color: "#6E6C66", marginTop: 4 }}>本部に通知しました。</div>
               </div>
             )}
           </div>
@@ -320,13 +320,13 @@ function SupplierRegPage() {
       )}
 
       {/* メインカード */}
-      <div style={{ width: "100%", maxWidth: 480, background: "#0c0c18", border: "1px solid #1e1e2e", borderRadius: 20, padding: "28px 24px" }}>
+      <div style={{ width: "100%", maxWidth: 480, background: "#FFFFFF", border: "1px solid #E4E0D6", borderRadius: 20, padding: "28px 24px" }}>
 
         {step < 4 && (
           <div style={{ marginBottom: 20 }}>
-            <div style={{ fontSize: 18, fontWeight: 800, color: "#fff", marginBottom: 4 }}>🏢 業者情報の登録</div>
-            <div style={{ fontSize: 12, color: "#8b95a1" }}>発注書の受け取り方法を登録します。3ステップで完了します。</div>
-            {loadError && <div style={{ marginTop: 10, fontSize: 12, color: "#f87171" }}>{loadError}</div>}
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#2C2C2A", marginBottom: 4 }}>🏢 業者情報の登録</div>
+            <div style={{ fontSize: 13, color: "#5F5D58" }}>発注書の受け取り方法を登録します。3ステップで完了します。</div>
+            {loadError && <div style={{ marginTop: 10, fontSize: 13, color: "#B42318" }}>{loadError}</div>}
           </div>
         )}
 
@@ -342,7 +342,7 @@ function SupplierRegPage() {
                 { label: "電話番号", key: "tel", placeholder: "例: 090-1234-5678", type: "tel" },
               ].map(f => (
                 <div key={f.key}>
-                  <div style={{ fontSize: 11, color: "#8b95a1", marginBottom: 6, fontWeight: 700 }}>{f.label}</div>
+                  <div style={{ fontSize: 13, color: "#5F5D58", marginBottom: 6, fontWeight: 700 }}>{f.label}</div>
                   <input
                     type={f.type}
                     value={form[f.key]}
@@ -350,9 +350,9 @@ function SupplierRegPage() {
                     placeholder={f.placeholder}
                     style={{
                       width: "100%", padding: "13px 14px",
-                      background: "#07070f",
-                      border: "1.5px solid " + (f.required && !form[f.key] ? "#7f1d1d" : form[f.key] ? "#6D28D9" : "#2a2a3a"),
-                      color: "#eee", borderRadius: 10, fontSize: 15, outline: "none",
+                      background: "#F7F5F0",
+                      border: "1.5px solid " + (f.required && !form[f.key] ? "#F5C2C0" : form[f.key] ? "#E8792F" : "#E4E0D6"),
+                      color: "#2C2C2A", borderRadius: 10, fontSize: 15, outline: "none",
                       transition: "border .2s"
                     }}
                   />
@@ -363,7 +363,7 @@ function SupplierRegPage() {
               onClick={() => form.companyName.trim() && setStep(2)}
               style={{
                 width: "100%", padding: 14,
-                background: form.companyName.trim() ? "linear-gradient(90deg,#6D28D9,#7c3aed)" : "#1a1a2a",
+                background: form.companyName.trim() ? "linear-gradient(90deg,#E8792F,#D9661C)" : "#ECE9E1",
                 color: "#fff", border: "none", borderRadius: 12,
                 fontSize: 15, fontWeight: 800,
                 cursor: form.companyName.trim() ? "pointer" : "default",
@@ -377,9 +377,9 @@ function SupplierRegPage() {
         {/* ── Step 2: 受注方法を選ぶ ── */}
         {step === 2 && (
           <div>
-            <div style={{ fontSize: 13, color: "#9ca3af", marginBottom: 16, lineHeight: 1.6 }}>
+            <div style={{ fontSize: 14, color: "#5F5D58", marginBottom: 16, lineHeight: 1.6 }}>
               発注書をどの方法で受け取りますか？<br/>
-              <span style={{ color: "#a78bfa", fontWeight: 700 }}>複数選択できます</span>
+              <span style={{ color: "#E8792F", fontWeight: 700 }}>複数選択できます</span>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 24 }}>
               {Object.entries(METHODS).map(([key, cfg]) => {
@@ -389,8 +389,8 @@ function SupplierRegPage() {
                     style={{
                       display: "flex", alignItems: "center", gap: 14,
                       padding: "15px 16px",
-                      background: sel ? cfg.color + "1a" : "#07070f",
-                      border: "2px solid " + (sel ? cfg.color : "#1e1e2e"),
+                      background: sel ? cfg.color + "1a" : "#F7F5F0",
+                      border: "2px solid " + (sel ? cfg.color : "#E4E0D6"),
                       borderRadius: 14, cursor: "pointer", textAlign: "left",
                       transition: "all .15s"
                     }}>
@@ -404,17 +404,17 @@ function SupplierRegPage() {
                       {cfg.icon}
                     </div>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 15, fontWeight: 700, color: sel ? "#fff" : "#ccc" }}>{cfg.label}</div>
-                      <div style={{ fontSize: 11, color: "#6b7280", marginTop: 3 }}>{cfg.inputLabel}</div>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: sel ? "#2C2C2A" : "#45433F" }}>{cfg.label}</div>
+                      <div style={{ fontSize: 13, color: "#6E6C66", marginTop: 3 }}>{cfg.inputLabel}</div>
                     </div>
                     <div style={{
                       width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
                       background: sel ? cfg.color : "transparent",
-                      border: "2px solid " + (sel ? cfg.color : "#2a2a3a"),
+                      border: "2px solid " + (sel ? cfg.color : "#E4E0D6"),
                       display: "flex", alignItems: "center", justifyContent: "center",
                       transition: "all .15s"
                     }}>
-                      {sel && <span style={{ color: "#fff", fontSize: 13, fontWeight: 800, lineHeight: 1 }}>✓</span>}
+                      {sel && <span style={{ color: "#2C2C2A", fontSize: 14, fontWeight: 800, lineHeight: 1 }}>✓</span>}
                     </div>
                   </button>
                 );
@@ -422,14 +422,14 @@ function SupplierRegPage() {
             </div>
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={() => setStep(1)}
-                style={{ flex: 1, padding: 13, background: "#1a1a2e", color: "#8b95a1", border: "none", borderRadius: 10, fontSize: 14, cursor: "pointer" }}>
+                style={{ flex: 1, padding: 13, background: "#ECE9E1", color: "#5F5D58", border: "none", borderRadius: 10, fontSize: 15, cursor: "pointer" }}>
                 ← 戻る
               </button>
               <button
                 onClick={() => { if (form.methods.length > 0) { setMethodStep(0); setStep(3); } }}
                 style={{
                   flex: 2, padding: 13,
-                  background: form.methods.length > 0 ? "linear-gradient(90deg,#6D28D9,#7c3aed)" : "#1a1a2a",
+                  background: form.methods.length > 0 ? "linear-gradient(90deg,#E8792F,#D9661C)" : "#ECE9E1",
                   color: "#fff", border: "none", borderRadius: 12,
                   fontSize: 15, fontWeight: 800,
                   cursor: form.methods.length > 0 ? "pointer" : "default",
@@ -448,7 +448,7 @@ function SupplierRegPage() {
             {form.methods.length > 1 && (
               <div style={{ display: "flex", gap: 6, marginBottom: 18 }}>
                 {form.methods.map((m, i) => (
-                  <div key={m} style={{ flex: 1, height: 5, borderRadius: 3, background: i <= methodStep ? METHODS[m].color : "#1a1a2a", transition: "background .3s" }} />
+                  <div key={m} style={{ flex: 1, height: 5, borderRadius: 3, background: i <= methodStep ? METHODS[m].color : "#ECE9E1", transition: "background .3s" }} />
                 ))}
               </div>
             )}
@@ -470,9 +470,9 @@ function SupplierRegPage() {
                 {currentCfg.icon}
               </div>
               <div>
-                <div style={{ fontSize: 17, fontWeight: 800, color: "#fff" }}>{currentCfg.label}</div>
+                <div style={{ fontSize: 17, fontWeight: 800, color: "#2C2C2A" }}>{currentCfg.label}</div>
                 {form.methods.length > 1 && (
-                  <div style={{ fontSize: 11, color: "#8b95a1", marginTop: 2 }}>
+                  <div style={{ fontSize: 13, color: "#5F5D58", marginTop: 2 }}>
                     {methodStep + 1} / {form.methods.length} 番目の設定
                   </div>
                 )}
@@ -480,8 +480,8 @@ function SupplierRegPage() {
             </div>
 
             {/* 取得ガイド */}
-            <div style={{ background: "#07070f", border: "1px solid #1e1e2e", borderRadius: 12, padding: "14px 16px", marginBottom: 18 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#a78bfa", marginBottom: 12 }}>
+            <div style={{ background: "#F7F5F0", border: "1px solid #E4E0D6", borderRadius: 12, padding: "14px 16px", marginBottom: 18 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#E8792F", marginBottom: 12 }}>
                 📋 {currentCfg.inputLabel}の確認方法
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -489,13 +489,13 @@ function SupplierRegPage() {
                   <div key={i} style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
                     <div style={{
                       width: 24, height: 24, borderRadius: "50%", flexShrink: 0, marginTop: 1,
-                      background: g.step === "💡" ? "#1a1a2a" : currentCfg.color,
+                      background: g.step === "💡" ? "#ECE9E1" : currentCfg.color,
                       display: "flex", alignItems: "center", justifyContent: "center",
-                      fontSize: g.step === "💡" ? 14 : 11, fontWeight: 800, color: "#fff"
+                      fontSize: g.step === "💡" ? 14 : 11, fontWeight: 800, color: "#2C2C2A"
                     }}>
                       {g.step}
                     </div>
-                    <div style={{ fontSize: 13, color: g.step === "💡" ? "#fb923c" : "#ccc", lineHeight: 1.65, flex: 1 }}>
+                    <div style={{ fontSize: 14, color: g.step === "💡" ? "#C2410C" : "#45433F", lineHeight: 1.65, flex: 1 }}>
                       {g.text}
                     </div>
                   </div>
@@ -505,7 +505,7 @@ function SupplierRegPage() {
 
             {/* 入力欄（1つだけ） */}
             <div style={{ marginBottom: 24 }}>
-              <div style={{ fontSize: 12, color: "#8b95a1", marginBottom: 8, fontWeight: 700 }}>
+              <div style={{ fontSize: 13, color: "#5F5D58", marginBottom: 8, fontWeight: 700 }}>
                 {currentCfg.inputLabel} ＊
               </div>
               <input
@@ -515,14 +515,14 @@ function SupplierRegPage() {
                 placeholder={currentCfg.placeholder}
                 style={{
                   width: "100%", padding: "14px",
-                  background: "#07070f",
-                  border: "2px solid " + (form[currentCfg.field] ? currentCfg.color : "#2a2a3a"),
-                  color: "#eee", borderRadius: 12, fontSize: 15, outline: "none",
+                  background: "#F7F5F0",
+                  border: "2px solid " + (form[currentCfg.field] ? currentCfg.color : "#E4E0D6"),
+                  color: "#2C2C2A", borderRadius: 12, fontSize: 15, outline: "none",
                   transition: "border .2s"
                 }}
               />
               {form[currentCfg.field] && (
-                <div style={{ marginTop: 8, fontSize: 12, color: "#4ade80", display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ marginTop: 8, fontSize: 13, color: "#2F7A1F", display: "flex", alignItems: "center", gap: 6 }}>
                   ✓ 入力されました
                 </div>
               )}
@@ -530,13 +530,13 @@ function SupplierRegPage() {
 
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={() => methodStep === 0 ? setStep(2) : setMethodStep(p => p - 1)}
-                style={{ flex: 1, padding: 13, background: "#1a1a2e", color: "#8b95a1", border: "none", borderRadius: 10, fontSize: 14, cursor: "pointer" }}>
+                style={{ flex: 1, padding: 13, background: "#ECE9E1", color: "#5F5D58", border: "none", borderRadius: 10, fontSize: 15, cursor: "pointer" }}>
                 ← 戻る
               </button>
               <button onClick={nextMethodOrSave}
                 style={{
                   flex: 2, padding: 14,
-                  background: isLastMethod ? "linear-gradient(90deg,#059669,#10b981)" : "linear-gradient(90deg,#6D28D9,#7c3aed)",
+                  background: isLastMethod ? "linear-gradient(90deg,#E1F5EE,#10b981)" : "linear-gradient(90deg,#E8792F,#D9661C)",
                   color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 800, cursor: "pointer"
                 }}>
                 {isLastMethod ? "✓ 登録を完了する" : "次の設定へ →"}
@@ -549,8 +549,8 @@ function SupplierRegPage() {
         {step === 4 && (
           <div style={{ textAlign: "center", padding: "16px 0 8px" }}>
             <div style={{ fontSize: 56, marginBottom: 12 }}>🎉</div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: "#fff", marginBottom: 8 }}>登録が完了しました！</div>
-            <div style={{ fontSize: 13, color: "#9ca3af", marginBottom: 28, lineHeight: 1.9 }}>
+            <div style={{ fontSize: 20, fontWeight: 800, color: "#2C2C2A", marginBottom: 8 }}>登録が完了しました！</div>
+            <div style={{ fontSize: 14, color: "#5F5D58", marginBottom: 28, lineHeight: 1.9 }}>
               {form.companyName} 様<br/>
               発注が届いたら以下の方法でご連絡します
             </div>
@@ -567,15 +567,15 @@ function SupplierRegPage() {
                   }}>
                     <span style={{ fontSize: 22 }}>{cfg.icon}</span>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: "#eee" }}>{cfg.label}</div>
-                      <div style={{ fontSize: 12, color: "#6b7280", marginTop: 3 }}>{val || "（未入力）"}</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: "#2C2C2A" }}>{cfg.label}</div>
+                      <div style={{ fontSize: 13, color: "#6E6C66", marginTop: 3 }}>{val || "（未入力）"}</div>
                     </div>
-                    <span style={{ fontSize: 16, color: "#4ade80" }}>✓</span>
+                    <span style={{ fontSize: 16, color: "#2F7A1F" }}>✓</span>
                   </div>
                 );
               })}
             </div>
-            <div style={{ background: "#0a1a0a", border: "1px solid #14532d33", borderRadius: 12, padding: "14px 16px", fontSize: 12, color: "#4ade8099", lineHeight: 1.7 }}>
+            <div style={{ background: "#FFFFFF", border: "1px solid #C0DD97", borderRadius: 12, padding: "14px 16px", fontSize: 13, color: "#2F7A1F99", lineHeight: 1.7 }}>
               登録内容はお店側のシステムに反映されました。<br/>
               ご協力ありがとうございました。
             </div>
@@ -584,7 +584,7 @@ function SupplierRegPage() {
       </div>
 
       {/* フッター */}
-      <div style={{ marginTop: 24, fontSize: 10, color: "#2a2a3a", textAlign: "center" }}>
+      <div style={{ marginTop: 24, fontSize: 12, color: "#2a2a3a", textAlign: "center" }}>
         MISE TASK · Powered by Anthropic Claude
       </div>
     </div>

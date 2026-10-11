@@ -295,8 +295,8 @@ let INITIAL_USERS = DEMO_DATA.USERS;
 let INITIAL_STORES = DEMO_DATA.STORES;
 
 let INITIAL_SUPPLIERS = DEMO_DATA.SUPPLIERS;
-const SEND_METHOD_LABELS = { email:"📧 メール", line:"💬 LINE", fax:"📠 FAX", sms:"📱 SMS", instagram:"📸 Instagram", twitter:"✕ X", other:"📝 その他" };
-const SEND_METHOD_COLORS = { email:"#0077B6", line:"#06C755", fax:"#6D28D9", sms:"#C9184A", instagram:"#E1306C", twitter:"#555", other:"#6b7280" };
+const SEND_METHOD_LABELS = { email:"📧 メール", line:"💬 LINE", fax:"📠 FAX", tel:"📞 電話", sms:"📱 SMS", instagram:"📸 Instagram", twitter:"✕ X", other:"📝 その他" };
+const SEND_METHOD_COLORS = { email:"#0077B6", line:"#06C755", fax:"#6D28D9", tel:"#0F6E56", sms:"#C9184A", instagram:"#E1306C", twitter:"#555", other:"#6b7280" };
 
 
 // ─── UNITS ───────────────────────────────────
@@ -981,6 +981,162 @@ function IssueSupplierModal({onClose, setSuppliers, notify}) {
           </button>
         </div>
       )}
+    </Modal>
+  );
+}
+
+// ─── 業者を追加／編集／URL共有／商品ひも付け（お店側の一連の流れ）───
+function SupplierWizard({mode, suppliers, setSuppliers, inventory, setInventory, storeFilter, notify, onClose}) {
+  const initSup = mode.sup || null;
+  const [step, setStep] = useState(mode.type==="new" ? "choose" : mode.type==="edit" ? "manual" : mode.type==="share" ? "share" : "items");
+  const [supId, setSupId] = useState(initSup?.id || null);
+  const sup = suppliers.find(s=>s.id===supId) || initSup;
+  const [f, setF] = useState(()=>({
+    name: initSup?.name||"", sendMethod: initSup?.sendMethod || initSup?.orderMethods?.[0] || "email",
+    contact: initSup?.contact||initSup?.email||"", lineId: initSup?.lineId||"", fax: initSup?.fax||"", tel: initSup?.tel||"", otherDesc: initSup?.otherDesc||"",
+  }));
+  const set = (k,v) => setF(p=>({...p,[k]:v}));
+  const newToken = () => "tok_"+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+  const [copied, setCopied] = useState(false);
+  const storeItems = (inventory||[]).filter(i=>!storeFilter || String(i.storeId)===String(storeFilter));
+  const [picked, setPicked] = useState(()=>Object.fromEntries(storeItems.filter(i=>initSup && i.supplierId===initSup.id).map(i=>[i.id,true])));
+
+  const METHOD_OPTS = [["email","📧 メール"],["line","💬 LINE"],["fax","📠 FAX"],["tel","📞 電話"],["other","📝 その他"]];
+  const FIELD = {email:["contact","メールアドレス","例: order@tanaka-seika.co.jp","email"], line:["lineId","LINEのID（@から始まる）","例: @tanaka_seika","text"], fax:["fax","FAX番号","例: 03-1234-5678","tel"], tel:["tel","電話番号","例: 090-1234-5678","tel"], other:["otherDesc","発注の仕方（メモ）","例: 毎朝の配達時に口頭で","text"]};
+
+  const saveManual = () => {
+    if (!f.name.trim()) { notify("業者名を入れてください","warn"); return; }
+    const [field] = FIELD[f.sendMethod];
+    if (!String(f[field]||"").trim()) { notify("発注の送り先を入れてください","warn"); return; }
+    const data = { name:f.name.trim(), sendMethod:f.sendMethod, orderMethods:[f.sendMethod], contact:f.contact.trim(), lineId:f.lineId.trim(), fax:f.fax.trim(), tel:f.tel.trim(), otherDesc:f.otherDesc.trim() };
+    if (sup) {
+      setSuppliers(p=>p.map(x=>x.id===sup.id?{...x,...data}:x));
+      notify("✓ 「"+data.name+"」を更新しました");
+      onClose();
+    } else {
+      const id = "s"+Date.now();
+      setSuppliers(p=>[...p,{...data, id, token:newToken(), selfRegistered:true, registeredBy:"store", registeredAt:new Date().toISOString().slice(0,10)}]);
+      setSupId(id);
+      notify("✓ 「"+data.name+"」を追加しました");
+      setStep("items");
+    }
+  };
+  const createInvite = () => {
+    if (!f.name.trim()) { notify("業者名を入れてください","warn"); return; }
+    const id = "s"+Date.now();
+    setSuppliers(p=>[...p,{ name:f.name.trim(), id, token:newToken(), contact:"", sendMethod:"email", lineId:"", fax:"", tel:"", selfRegistered:false, orderMethods:[] }]);
+    setSupId(id);
+    setStep("share");
+  };
+  // トークンが無い業者にURLを出すときは、表示の前に発行しておく
+  useEffect(() => {
+    if (step==="share" && sup && !sup.token) { const t=newToken(); setSuppliers(p=>p.map(x=>x.id===sup.id?{...x,token:t}:x)); }
+  }, [step, sup?.id, sup?.token]);
+  const tok = sup?.token;
+  const regUrl = (sup && tok) ? window.location.origin+"/supplier-reg.html?token="+encodeURIComponent(tok)+"&name="+encodeURIComponent(sup.name||"") : "";
+  const saveItems = () => {
+    if (!sup) return onClose();
+    setInventory(p=>p.map(i=>{
+      if (!storeItems.some(x=>x.id===i.id)) return i;
+      if (picked[i.id]) return {...i, supplierId:sup.id};
+      if (i.supplierId===sup.id) return {...i, supplierId:""};
+      return i;
+    }));
+    notify("✓ 「"+sup.name+"」の商品を保存しました");
+    onClose();
+  };
+
+  const H = ({t,sub}) => (<div style={{marginBottom:16}}><div style={{fontSize:20,fontWeight:800,color:"#2C2C2A"}}>{t}</div>{sub&&<div style={{fontSize:14,color:"#5F5D58",marginTop:4,lineHeight:1.6}}>{sub}</div>}</div>);
+  const big = (on) => ({flex:1,padding:"16px 14px",borderRadius:16,border:"2px solid "+(on?"#E8792F":"#EDE3D6"),background:on?"#FDF0E6":"#FFFFFF",cursor:"pointer",textAlign:"left"});
+  const inputS = {width:"100%",padding:"12px",background:"#FFFFFF",border:"1px solid #E4E0D6",color:"#2C2C2A",borderRadius:10,fontSize:16,outline:"none"};
+
+  return (
+    <Modal onClose={onClose} width={500}>
+      {step==="choose" && (<div>
+        <H t="業者を追加" sub="どちらの方法で登録しますか？"/>
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          <button onClick={()=>setStep("manual")} style={big(false)}>
+            <div style={{fontSize:16,fontWeight:800,color:"#2C2C2A"}}>✏️ 自分で入力する</div>
+            <div style={{fontSize:13,color:"#5F5D58",marginTop:4}}>名前と発注の送り先が分かっていれば、すぐ登録できます（FAX・電話の業者さんもこちら）</div>
+          </button>
+          <button onClick={()=>setStep("invite")} style={big(false)}>
+            <div style={{fontSize:16,fontWeight:800,color:"#2C2C2A"}}>🔗 業者さんに入力してもらう</div>
+            <div style={{fontSize:13,color:"#5F5D58",marginTop:4}}>QRやURLを業者さんに送り、連絡先などを入れてもらいます</div>
+          </button>
+        </div>
+      </div>)}
+
+      {step==="manual" && (<div>
+        <H t={sup?"業者を編集":"業者を追加（自分で入力）"}/>
+        <div style={{fontSize:13,fontWeight:700,color:"#45433F",marginBottom:6}}>業者名 *</div>
+        <input value={f.name} onChange={e=>set("name",e.target.value)} placeholder="例: 田中青果" style={{...inputS,marginBottom:14}} autoFocus/>
+        <div style={{fontSize:13,fontWeight:700,color:"#45433F",marginBottom:6}}>発注の送り方 *</div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:14}}>
+          {METHOD_OPTS.map(([k,l])=>(
+            <button key={k} onClick={()=>set("sendMethod",k)}
+              style={{padding:"9px 14px",borderRadius:999,border:"2px solid "+(f.sendMethod===k?"#E8792F":"#EDE3D6"),background:f.sendMethod===k?"#E8792F":"#FFFFFF",color:f.sendMethod===k?"#fff":"#2C2C2A",fontSize:14,fontWeight:800,cursor:"pointer"}}>{l}</button>
+          ))}
+        </div>
+        {(()=>{ const [k,label,ph,type]=FIELD[f.sendMethod]; return (<>
+          <div style={{fontSize:13,fontWeight:700,color:"#45433F",marginBottom:6}}>{label} *</div>
+          <input type={type} value={f[k]} onChange={e=>set(k,e.target.value)} placeholder={ph} style={{...inputS,marginBottom:14}}/>
+        </>); })()}
+        {f.sendMethod!=="tel" && (<>
+          <div style={{fontSize:13,fontWeight:700,color:"#45433F",marginBottom:6}}>電話番号（任意）</div>
+          <input type="tel" value={f.tel} onChange={e=>set("tel",e.target.value)} placeholder="例: 090-1234-5678" style={{...inputS,marginBottom:16}}/>
+        </>)}
+        <div style={{display:"flex",gap:10}}>
+          <Btn onClick={()=> sup ? onClose() : setStep("choose")} color="#ECE9E1" style={{flex:1,padding:"12px"}}>{sup?"やめる":"← 戻る"}</Btn>
+          <Btn onClick={saveManual} color="#E8792F" style={{flex:2,padding:"12px",fontSize:15}}>{sup?"保存する":"登録して商品を選ぶ →"}</Btn>
+        </div>
+      </div>)}
+
+      {step==="invite" && (<div>
+        <H t="業者さんに入力してもらう" sub="業者名を入れると、業者さんに送るQRとURLができます。"/>
+        <div style={{fontSize:13,fontWeight:700,color:"#45433F",marginBottom:6}}>業者名 *</div>
+        <input value={f.name} onChange={e=>set("name",e.target.value)} placeholder="例: 田中青果" style={{...inputS,marginBottom:16}} autoFocus/>
+        <div style={{display:"flex",gap:10}}>
+          <Btn onClick={()=>setStep("choose")} color="#ECE9E1" style={{flex:1,padding:"12px"}}>← 戻る</Btn>
+          <Btn onClick={createInvite} color="#E8792F" style={{flex:2,padding:"12px",fontSize:15}}>QRとURLを作る</Btn>
+        </div>
+      </div>)}
+
+      {step==="share" && sup && (<div>
+        <H t={sup.name+" さんに送る"} sub="このQRかURLを業者さんに送ってください。業者さんが開いて、発注の受け取り方を登録します。"/>
+        <div style={{display:"flex",justifyContent:"center",padding:16,background:"#fff",border:"1px solid #EDE7DD",borderRadius:16,marginBottom:12}}><QRDisplay url={regUrl}/></div>
+        <div style={{display:"flex",gap:8,alignItems:"center",background:"#FBFAF7",border:"1px solid #EDE7DD",borderRadius:12,padding:"10px 12px",marginBottom:12}}>
+          <div style={{flex:1,fontSize:12,color:"#0369A1",wordBreak:"break-all"}}>{regUrl}</div>
+          <button onClick={()=>{ try{ navigator.clipboard.writeText(regUrl).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2000);}); }catch{} }}
+            style={{flexShrink:0,padding:"8px 14px",background:copied?"#EAF3DE":"#E8792F",color:copied?"#2F7A1F":"#fff",border:"none",borderRadius:999,cursor:"pointer",fontSize:14,fontWeight:800}}>{copied?"✓ コピー済み":"コピー"}</button>
+        </div>
+        <div style={{fontSize:13,color:"#5F5D58",lineHeight:1.8,marginBottom:14}}>メール・LINEならURLを貼り付け、FAXならQRを印刷して送れます。</div>
+        <div style={{display:"flex",gap:10}}>
+          <Btn onClick={onClose} color="#ECE9E1" style={{flex:1,padding:"12px"}}>閉じる</Btn>
+          <Btn onClick={()=>setStep("items")} color="#E8792F" style={{flex:2,padding:"12px",fontSize:15}}>この業者の商品を選ぶ →</Btn>
+        </div>
+      </div>)}
+
+      {step==="items" && sup && (<div>
+        <H t={sup.name+" から仕入れる商品"} sub="チェックした商品は、在庫が減ったときにこの業者への発注候補に出ます。"/>
+        <div style={{maxHeight:"45vh",overflowY:"auto",border:"1px solid #EDE7DD",borderRadius:12,padding:6,background:"#FBFAF7",marginBottom:14}}>
+          {storeItems.length===0 && <div style={{padding:14,fontSize:14,color:"#6E6C66"}}>商品がまだありません。在庫画面で商品を登録してから選べます。</div>}
+          {storeItems.map(i=>{
+            const other = i.supplierId && i.supplierId!==sup.id ? suppliers.find(x=>x.id===i.supplierId) : null;
+            const on = !!picked[i.id];
+            return (
+              <label key={i.id} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 12px",marginBottom:4,background:"#FFFFFF",border:"1px solid "+(on?"#E8792F":"#EDE7DD"),borderRadius:10,cursor:"pointer"}}>
+                <input type="checkbox" checked={on} onChange={()=>setPicked(p=>({...p,[i.id]:!p[i.id]}))} style={{width:20,height:20,accentColor:"#E8792F"}}/>
+                <span style={{flex:1,fontSize:15,fontWeight:700,color:"#2C2C2A"}}>{i.name}</span>
+                {other && <span style={{fontSize:12,color:"#6E6C66"}}>今: {other.name}</span>}
+              </label>
+            );
+          })}
+        </div>
+        <div style={{display:"flex",gap:10}}>
+          <Btn onClick={onClose} color="#ECE9E1" style={{flex:1,padding:"12px"}}>あとで</Btn>
+          <Btn onClick={saveItems} color="#E8792F" style={{flex:2,padding:"12px",fontSize:15}}>保存する</Btn>
+        </div>
+      </div>)}
     </Modal>
   );
 }
@@ -2907,6 +3063,7 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
   const [inspectOrder, setInspectOrder] = useState(null);
   const [showSupplierForm, setShowSupplierForm] = useState(false);
   const [showSupplierReg, setShowSupplierReg] = useState(null);
+  const [supWizard, setSupWizard] = useState(null); // {type:"new"|"edit"|"share"|"items", sup}
   const [newSupplier, setNewSupplier] = useState({name:"",contact:"",sendMethod:"email",lineId:"",fax:"",tel:""});
   const [showDemand, setShowDemand] = useState(false);
   // 発注がカバーする対象日（既定=明日）。需要倍率を最低在庫・発注量に反映
@@ -3002,6 +3159,8 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
       if (m==="instagram" && sup.instagramId) return {method:m, url:`https://www.instagram.com/${sup.instagramId.replace("@","")}/`, label:"Instagramを開く"};
       if (m==="twitter"   && sup.twitterId)   return {method:m, url:`https://x.com/${sup.twitterId.replace("@","")}/`, label:"X(Twitter)を開く"};
       if (m==="other"     && sup.otherDesc)   return {method:m, url:null, label:sup.otherDesc};
+      if (m==="tel"       && sup.tel)         return {method:m, url:`tel:${sup.tel}`, label:"電話をかける（"+sup.tel+"）"};
+      if (m==="fax"       && sup.fax)         return {method:m, url:null, label:"FAXで送る（"+sup.fax+"）"};
       return null;
     }).filter(Boolean);
   };
@@ -3114,7 +3273,7 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
           <h2 style={{fontSize:22,fontWeight:800,color:"#2C2C2A",marginBottom:3}}>{inspectOnly?"検品":"発注管理"}</h2>
           <p style={{fontSize:13,color:"#5F5D58"}}>{inspectOnly?"届いた荷物の数を確かめて、在庫に反映します":"在庫不足を自動検知 → 業者別一括発注 → 検品チェック"}</p>
         </div>
-        {!inspectOnly && <Btn onClick={()=>setShowSupplierForm(true)} color="#6D28D9">＋ 業者登録QR発行</Btn>}
+        {!inspectOnly && <Btn onClick={()=>setSupWizard({type:"new"})} color="#E8792F">＋ 業者を追加</Btn>}
       </div>
 
       {pendingInspection.length > 0 && (
@@ -3298,7 +3457,13 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
 
       {!inspectOnly && tab==="suppliers" && (
         <div>
+          <button onClick={()=>setSupWizard({type:"new"})}
+            style={{width:"100%",padding:"16px",marginBottom:14,background:"#E8792F",border:"none",borderRadius:16,color:"#fff",fontSize:16,fontWeight:800,cursor:"pointer"}}>
+            ＋ 業者を追加
+          </button>
+          {suppliers.length===0 && <div style={{background:"#FFFFFF",border:"1px solid #EDE7DD",borderRadius:14,padding:20,textAlign:"center",color:"#5F5D58",fontSize:14}}>まだ業者がいません。上のボタンから追加してください。</div>}
           {suppliers.map(sup=>{
+            const itemCount = inventory.filter(i=>i.supplierId===sup.id && (!storeFilter || String(i.storeId)===String(storeFilter))).length;
             const method = sup.sendMethod || sup.orderMethods?.[0] || "other";
             const mc = SEND_METHOD_COLORS[method] || "#6b7280";
             return (
@@ -3318,17 +3483,18 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
                       ? <span style={{fontSize:12,color:"#2F7A1F",background:"#EAF3DE",padding:"3px 8px",borderRadius:20,border:"1px solid #C0DD97"}}>✓ 登録済み</span>
                       : <span style={{fontSize:12,color:"#C2410C",background:"#FDF0E6",padding:"3px 8px",borderRadius:20,border:"1px solid #F6CFAF"}}>未登録</span>
                     }
-                    <div style={{display:"flex",gap:6}}>
-                      <button onClick={()=>{
-                          let t = sup.token;
-                          if(!t){ // トークンが無い業者は発行してから開く
-                            t = "tok_"+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
-                            setSuppliers(p=>p.map(s=>s.id===sup.id?{...s,token:t}:s));
-                          }
-                          setShowSupplierReg(t);
-                        }}
-                        style={{padding:"6px 14px",background:"#E6F1FB",border:"1px solid #B5D4F4",borderRadius:8,color:"#0369A1",fontSize:13,cursor:"pointer",whiteSpace:"nowrap"}}>
-                        {sup.selfRegistered ? "📋 登録内容を確認" : "🔗 登録フォームを開く"}
+                    <div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"flex-end"}}>
+                      <button onClick={()=>setSupWizard({type:"items",sup})}
+                        style={{padding:"6px 12px",background:itemCount?"#FFFFFF":"#FDF3DF",border:"1px solid "+(itemCount?"#EDE3D6":"#F1D49A"),borderRadius:8,color:itemCount?"#45433F":"#A16207",fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                        {itemCount ? "商品 "+itemCount+"件" : "⚠ 商品を選ぶ"}
+                      </button>
+                      <button onClick={()=>setSupWizard({type:"edit",sup})}
+                        style={{padding:"6px 12px",background:"#FFFFFF",border:"1px solid #EDE3D6",borderRadius:8,color:"#45433F",fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                        ✏️ 編集
+                      </button>
+                      <button onClick={()=>setSupWizard({type:"share",sup})}
+                        style={{padding:"6px 12px",background:"#FFFFFF",border:"1px solid #EDE3D6",borderRadius:8,color:"#45433F",fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                        🔗 URLを送る
                       </button>
                       <button onClick={()=>{ if(window.confirm(`「${sup.name}」を削除しますか？\n※発注履歴は残ります`)){ setSuppliers(p=>p.filter(s=>s.id!==sup.id)); notify("業者を削除しました","warn"); } }}
                         style={{padding:"6px 12px",background:"rgba(239,68,68,0.12)",border:"1px solid #ef444455",borderRadius:8,color:"#B42318",fontSize:13,cursor:"pointer",whiteSpace:"nowrap"}}>
@@ -3350,6 +3516,7 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
       {showDemand && <DemandSettingsModal config={demandConfig} onClose={()=>setShowDemand(false)} onSave={(d)=>{ setDemandConfig && setDemandConfig(d); notify("✓ 需要設定を保存しました"); }}/>}
 
       {showSupplierForm && <IssueSupplierModal onClose={()=>setShowSupplierForm(false)} setSuppliers={setSuppliers} notify={notify}/>}
+      {supWizard && <SupplierWizard mode={supWizard} suppliers={suppliers} setSuppliers={setSuppliers} inventory={inventory} setInventory={setInventory} storeFilter={storeFilter} notify={notify} onClose={()=>setSupWizard(null)}/>}
 
       {showSupplierReg && (
         <SupplierSelfRegModal token={showSupplierReg} suppliers={suppliers} setSuppliers={setSuppliers}
@@ -3565,7 +3732,7 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
 
   const openNew = () => {
     setEditItem(null);
-    setForm({name:"",category:"調味料",storageGroup:storageGroupOptions[0],unit:"g",customUnit:"",stock:"0",minStock:"500",orderQty:"1000",supplierId:"s1",unitPrice:"0",bagSize:"",bagUnit:"袋",orderByCase:false,demandFlex:true});
+    setForm({name:"",category:"調味料",storageGroup:storageGroupOptions[0],unit:"g",customUnit:"",stock:"0",minStock:"500",orderQty:"1000",supplierId:"",unitPrice:"0",bagSize:"",bagUnit:"袋",orderByCase:false,demandFlex:true});
     setShowBag(false);
     setShowForm(true);
   };
@@ -3575,7 +3742,7 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
       name:item.name, category:item.category, storageGroup:item.storageGroup,
       unit:item.unit||"", customUnit:"",
       stock:String(item.stock), minStock:String(item.minStock),
-      orderQty:String(item.orderQty), supplierId:item.supplierId||"s1",
+      orderQty:String(item.orderQty), supplierId:item.supplierId||"",
       unitPrice:String(item.unitPrice),
       bagSize:String(item.bagSize||""), bagUnit:item.bagUnit||"袋",
       orderByCase: !!item.orderByCase,
@@ -3750,6 +3917,7 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
             <Select label="取引業者" value={form.supplierId} onChange={e=>setForm(p=>({...p,supplierId:e.target.value}))}
               options={[{value:"",label:"未設定"},...INITIAL_SUPPLIERS.map(s=>({value:s.id,label:s.name}))]}/>
+            {!form.supplierId && <div style={{fontSize:13,color:"#A16207",background:"#FDF3DF",borderRadius:8,padding:"8px 10px",margin:"-6px 0 12px"}}>取引業者を選んでください。未設定のままだと発注の候補に出ません（業者は「発注」→「業者一覧」で追加できます）。</div>}
             <Input label={form.orderByCase ? `単価 (¥/1${form.bagUnit||"ケース"})` : `単価 (¥/${form.unit||"個"})`} type="number" value={form.unitPrice} onChange={e=>setForm(p=>({...p,unitPrice:e.target.value}))}/>
           </div>
           <div style={{display:"flex",gap:10}}>
