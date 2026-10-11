@@ -433,6 +433,79 @@ const Bar = ({v,max,color="#E85D04",h=4}) => (
   </div>
 );
 
+// お店アカウント端末で、名前を選んでPINで切り替えるモーダル
+function SwitchUserModal({users, onSwitch, onClose}) {
+  const [sel, setSel] = useState(null);
+  const [pin, setPin] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const submit = async (p) => {
+    setBusy(true); setErr("");
+    try { await onSwitch(sel, p); }
+    catch { setErr("PINが違います"); setPin(""); }
+    setBusy(false);
+  };
+  const press = (d) => {
+    if (busy) return;
+    const next = (pin + d).slice(0, 4);
+    setPin(next);
+    if (next.length === 4) submit(next);
+  };
+  return (
+    <Modal onClose={onClose} width={420}>
+      {!sel ? (
+        <div>
+          <div style={{fontSize:20,fontWeight:800,color:"#2C2C2A",marginBottom:4}}>だれが使いますか？</div>
+          <div style={{fontSize:14,color:"#5F5D58",marginBottom:16}}>名前を選んで、自分のPINを入れてください。</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:10,maxHeight:"55vh",overflowY:"auto"}}>
+            {users.map(u=>(
+              <button key={u.id} onClick={()=>{ setSel(u); setPin(""); setErr(""); if(!u.pinHash){ /* PIN未設定の人はそのまま切替 */ } }}
+                style={{display:"flex",alignItems:"center",gap:10,padding:"12px",background:"#FFFFFF",border:"2px solid #EDE3D6",borderRadius:14,cursor:"pointer",textAlign:"left"}}>
+                <span style={{width:36,height:36,borderRadius:"50%",background:u.color||"#E8792F",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,flexShrink:0}}>{u.avatar||String(u.name||"?").slice(0,1)}</span>
+                <span style={{minWidth:0}}>
+                  <span style={{display:"block",fontSize:15,fontWeight:800,color:"#2C2C2A",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</span>
+                  <span style={{display:"block",fontSize:12,color:"#6E6C66"}}>{u.role}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div style={{textAlign:"center"}}>
+          <div style={{fontSize:20,fontWeight:800,color:"#2C2C2A",marginBottom:4}}>{sel.name} さん</div>
+          {sel.pinHash ? (
+            <>
+              <div style={{fontSize:14,color:"#5F5D58",marginBottom:14}}>4けたのPINを入れてください</div>
+              <div style={{display:"flex",justifyContent:"center",gap:12,marginBottom:10}}>
+                {[0,1,2,3].map(i=><span key={i} style={{width:16,height:16,borderRadius:"50%",background:i<pin.length?"#E8792F":"#ECE9E1"}}/>)}
+              </div>
+              <div style={{minHeight:20,fontSize:14,color:"#B42318",marginBottom:6}}>{err}</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,maxWidth:280,margin:"0 auto 14px"}}>
+                {["1","2","3","4","5","6","7","8","9","","0","del"].map((k,i)=> k==="" ? <span key={i}/> : (
+                  <button key={i} onClick={()=> k==="del" ? setPin(p=>p.slice(0,-1)) : press(k)} disabled={busy}
+                    style={{height:58,borderRadius:14,border:"2px solid #EDE3D6",background:"#FFFFFF",fontSize:k==="del"?15:24,fontWeight:800,color:"#2C2C2A",cursor:"pointer"}}>
+                    {k==="del" ? "消す" : k}
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{fontSize:14,color:"#A16207",background:"#FDF3DF",borderRadius:10,padding:"10px 12px",margin:"8px 0 14px",lineHeight:1.6}}>
+                この人はPINがまだ設定されていません。<br/>店長がスタッフ管理でPINを設定してください。
+              </div>
+              <div style={{minHeight:20,fontSize:14,color:"#B42318",marginBottom:6}}>{err}</div>
+              <Btn onClick={()=>submit("")} disabled={busy} style={{width:"100%",marginBottom:10}}>このまま切り替える</Btn>
+            </>
+          )}
+          <button onClick={()=>{setSel(null);setPin("");setErr("");}}
+            style={{padding:"8px 14px",background:"transparent",border:"none",color:"#5F5D58",fontSize:14,cursor:"pointer"}}>← 名前の選択に戻る</button>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 // 現場スタッフ（メニューを最小限にする役割）か
 const myRoleIsFrontStaff = (role) => role==="スタッフ" || role==="アルバイト";
 
@@ -5554,7 +5627,8 @@ function LoginScreen({ onLogin, stores, users }) {
     try {
       if (authMode === "manager") {
         const result = await api.auth.loginManager(email, password);
-        if (result?.token) onLogin(result.userId, result.storeId ?? null, result.token);
+        // 店長のメールログイン＝お店アカウント（端末はお店の画面でログインしたまま。中でPINで切替）
+        if (result?.token) onLogin(result.userId, result.storeId ?? null, result.token, {storeMode:true});
       } else {
         const result = await api.auth.loginHonbu(email, password);
         if (result?.token) onLogin(result.userId, null, result.token);
@@ -5973,19 +6047,55 @@ function AppInner() {
   const [demoMode] = useState(()=> new URLSearchParams(window.location.search).get("demo")==="1"); // デモ体験モード（保存しない）
   const [showTour, setShowTour] = useState(false);   // デモの操作レクチャー
 
+  // ── お店アカウント（店長メールでログインした店舗端末）──
+  //   storeBase: お店アカウントのトークン等。currentUserId が null の間は「お店の画面」（スタッフ向け表示・閲覧のみ）
+  //   名前＋PINで切り替えるとその人のトークン・表示になり、5分操作がないとお店の画面へ戻る
+  const [storeMode, setStoreMode] = useState(false);
+  const storeBaseRef = useRef(null);
+  const [showSwitch, setShowSwitch] = useState(false);
+
   // ── ログインハンドラ ──
-  const handleLogin = (userId, storeId, token) => {
+  const handleLogin = (userId, storeId, token, opts) => {
     if (token) api.setAuthToken(token);
-    setCurrentUserId(userId);
     if (storeId) setSelectedStoreId(storeId);
+    if (opts?.storeMode) {
+      storeBaseRef.current = {token, userId, storeId: storeId||null};
+      setStoreMode(true);
+      setCurrentUserId(null);
+    } else {
+      setStoreMode(false);
+      storeBaseRef.current = null;
+      setCurrentUserId(userId);
+    }
     setIsLoggedIn(true);
-    try { localStorage.setItem("mise_auth", JSON.stringify({token, userId, storeId: storeId||null})); } catch {}
+    try { localStorage.setItem("mise_auth", JSON.stringify({token, userId, storeId: storeId||null, storeMode: !!opts?.storeMode})); } catch {}
     loadAppData(); // ログイン後にトークン付きで bootstrap
+  };
+
+  // PINで切り替え（お店アカウント端末のみ）
+  const switchToUser = async (user, pin) => {
+    const base = storeBaseRef.current;
+    const res = await api.auth.loginByPin(undefined, user.store ?? base?.storeId, user.id, pin || "");
+    if (!res?.token) throw new Error("no token");
+    api.setAuthToken(res.token);
+    setCurrentUserId(user.id);
+    setShowSwitch(false);
+    notify("✓ "+user.name+" さんに切り替えました");
+  };
+  const backToStore = (msg) => {
+    const base = storeBaseRef.current;
+    if (!base) return;
+    api.setAuthToken(base.token);
+    setCurrentUserId(null);
+    setView("top");
+    if (msg) notify(msg);
   };
 
   const handleLogout = () => {
     api.setAuthToken(null);
     try { localStorage.removeItem("mise_auth"); } catch {}
+    storeBaseRef.current = null;
+    setStoreMode(false);
     setCurrentUserId(null);
     setSelectedStoreId(null);
     setIsLoggedIn(false);
@@ -6162,7 +6272,10 @@ function AppInner() {
           const pl = await api.auth.loginByPin(sl.tenantId, sl.storeId, mgr.id, "");
           if (pl?.token) {
             api.setAuthToken(pl.token);
-            setCurrentUserId(pl.userId);
+            // デモもお店アカウント端末と同じく「お店の画面」から（名前を選んで切り替えを体験できる）
+            storeBaseRef.current = {token: pl.token, userId: pl.userId, storeId: sl.storeId};
+            setStoreMode(true);
+            setCurrentUserId(null);
             setSelectedStoreId(sl.storeId);
             setIsLoggedIn(true);
             await loadAppData();
@@ -6176,7 +6289,14 @@ function AppInner() {
       const saved = JSON.parse(localStorage.getItem("mise_auth") || "null");
       if (saved && saved.token) {
         api.setAuthToken(saved.token);
-        setCurrentUserId(saved.userId);
+        if (saved.storeMode) {
+          // お店アカウントは再表示時もお店の画面から（切り替えた人の状態は残さない）
+          storeBaseRef.current = {token: saved.token, userId: saved.userId, storeId: saved.storeId||null};
+          setStoreMode(true);
+          setCurrentUserId(null);
+        } else {
+          setCurrentUserId(saved.userId);
+        }
         if (saved.storeId) setSelectedStoreId(saved.storeId);
         setIsLoggedIn(true);
         loadAppData();
@@ -6282,9 +6402,10 @@ function AppInner() {
     "スタッフ":     tabs.map(t=>t.id).filter(id=>!STAFF_ONLY.includes(id)),
     "アルバイト":   tabs.map(t=>t.id).filter(id=>!STAFF_ONLY.includes(id)),
   };
-  const isFrontStaff = myRoleIsFrontStaff(currentUser?.role);
+  const onStoreScreen = storeMode && !currentUser;          // お店の画面（だれも切り替えていない）
+  const isFrontStaff = onStoreScreen || myRoleIsFrontStaff(currentUser?.role);
   const myRole = currentUser?.role;
-  const hiddenTabs = (myRole && myRole!=="本部") ? (roleHide[myRole] || []) : [];
+  const hiddenTabs = onStoreScreen ? roleHide["スタッフ"] : (myRole && myRole!=="本部") ? (roleHide[myRole] || []) : [];
   // 「検品」単独メニューはスタッフ・アルバイト用（他の役割は「発注」の中で検品できる）
   const visibleTabs = tabs.filter(t=>!hiddenTabs.includes(t.id) && (t.id!=="inspect" || isFrontStaff));
 
@@ -6308,6 +6429,17 @@ function AppInner() {
     .map(g=>({...g, kids:g.kids.filter(id=>visibleIds.includes(id))}))
     .filter(g=>g.kids.length>0);
   const activeGroup = visibleGroups.find(g=>g.kids.includes(view));
+  // お店アカウント端末：切り替えて5分操作がなければお店の画面へ戻す
+  useEffect(() => {
+    if (!storeMode || currentUserId==null) return;
+    let t;
+    const reset = () => { clearTimeout(t); t = setTimeout(()=>backToStore("5分操作がなかったので、お店の画面に戻りました"), 5*60*1000); };
+    const evs = ["pointerdown","keydown","touchstart","wheel"];
+    evs.forEach(e=>window.addEventListener(e, reset, {passive:true}));
+    reset();
+    return () => { clearTimeout(t); evs.forEach(e=>window.removeEventListener(e, reset)); };
+  }, [storeMode, currentUserId]);
+
   // 見せない画面が開いたままにならないよう、先頭の画面へ戻す
   useEffect(() => {
     if (visibleIds.length && !visibleIds.includes(view)) setView(visibleIds[0]);
@@ -6374,6 +6506,13 @@ function AppInner() {
       )}
 
       {demoMode && showTour && <DemoTour onClose={()=>setShowTour(false)} />}
+
+      {showSwitch && storeMode && (
+        <SwitchUserModal
+          users={INITIAL_USERS.filter(u=>u.role!=="本部" && (storeBaseRef.current?.storeId==null || String(u.store)===String(storeBaseRef.current.storeId)))}
+          onSwitch={switchToUser}
+          onClose={()=>setShowSwitch(false)}/>
+      )}
 
       {demoMode && (
         <div style={{position:"fixed",bottom:16,left:"50%",transform:"translateX(-50%)",zIndex:9998,display:"flex",alignItems:"center",gap:10,background:"#EEEDFE",border:"1px solid #6D28D9",color:"#2C2C2A",padding:"8px 16px",borderRadius:30,fontSize:13,boxShadow:"0 8px 28px #0009"}}>
@@ -6498,8 +6637,27 @@ function AppInner() {
         <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",justifyContent:"flex-end"}}>
           {isHonbu && <div style={{padding:"3px 10px",background:"#EEEDFE",border:"1px solid #6D28D944",borderRadius:8,fontSize:13,color:"#6D28D9"}}>{selectedStoreId ? "🏪 "+( INITIAL_STORES.find(s=>s.id===selectedStoreId)?.name||"") : "👁 全店舗"}</div>}
           {warnCount > 0 && !isFrontStaff && <div style={{padding:"3px 10px",background:"#FFFFFF",border:"1px solid #F6CFAF",borderRadius:8,fontSize:13,color:"#A16207"}}>⚠ 差異 {warnCount}件</div>}
-          {/* スタッフ選択 */}
-          <select value={currentUserId!=null ? String(currentUserId) : ""} onChange={e=>{
+          {/* お店アカウント端末：名前＋PINで切り替え */}
+          {storeMode && (onStoreScreen ? (
+            <button onClick={()=>setShowSwitch(true)}
+              style={{padding:"8px 16px",background:"#E8792F",border:"none",borderRadius:999,color:"#fff",fontSize:14,fontWeight:800,cursor:"pointer"}}>
+              名前とPINで切り替え
+            </button>
+          ) : (
+            <>
+              <span style={{padding:"6px 12px",background:"#FDF0E6",borderRadius:999,fontSize:14,fontWeight:700,color:"#2C2C2A"}}>{currentUser?.name} さんで操作中</span>
+              <button onClick={()=>backToStore()}
+                style={{padding:"8px 14px",background:"#FFFFFF",border:"2px solid #EDE3D6",borderRadius:999,color:"#45433F",fontSize:14,fontWeight:800,cursor:"pointer"}}>
+                お店に戻る
+              </button>
+            </>
+          ))}
+          {!storeMode && !isHonbu && currentUser && (
+            <span style={{padding:"6px 12px",background:"#FDF0E6",borderRadius:999,fontSize:14,fontWeight:700,color:"#2C2C2A"}}>{currentUser.name}（{currentUser.role}）</span>
+          )}
+
+          {/* スタッフ選択（本部のみ。PINなしで表示を切り替える管理用） */}
+          {isHonbu && !storeMode && <select value={currentUserId!=null ? String(currentUserId) : ""} onChange={e=>{
               // IDは数値(スタッフ)とUUID(本部)が混在するため必ず文字列照合で本人を特定（Number化しない）
               const v = e.target.value;
               const user = v ? INITIAL_USERS.find(u=>String(u.id)===v) : null;
@@ -6509,7 +6667,7 @@ function AppInner() {
             style={{background:"#F4F2EC",border:"1px solid #E4E0D6",color:currentUser?currentUser.color:"#5F5D58",padding:"6px 12px",borderRadius:20,fontSize:13,cursor:"pointer",fontWeight:currentUser?700:400}}>
             <option value="">スタッフを選択</option>
             {INITIAL_USERS.map(u=><option key={u.id} value={String(u.id)}>{u.name}（{u.role}）</option>)}
-          </select>
+          </select>}
 
           {/* 店舗選択（本部ログイン時のみ） */}
           {isHonbu && (
