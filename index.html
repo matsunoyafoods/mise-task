@@ -5854,29 +5854,21 @@ function LoginScreen({ onLogin, stores, users }) {
           <div style={{fontSize:14,color:"#5F5D58",textAlign:"center",marginBottom:16}}>QRを確認しています…</div>
         )}
 
-        {/* Step 1: Store Code */}
+        {/* Step 1: 最初の画面は「本部ログイン」「店長ログイン」の2つだけ（スタッフは店のログインQRから入る） */}
         {step === "store" && (
           <div>
-            <div style={{fontSize:15,fontWeight:700,color:"#2C2C2A",marginBottom:16,textAlign:"center"}}>店舗コードを入力</div>
-            <input
-              value={storeCode}
-              onChange={e => { setStoreCode(e.target.value); setError(""); }}
-              onKeyDown={e => e.key === "Enter" && handleStoreCode()}
-              placeholder="例: 1 / 2 / HONBU"
-              autoFocus
-              style={{width:"100%",padding:"16px",background:"#FFFFFF",border:"1px solid " + (error ? "#ef4444" : "#E4E0D6"),color:"#2C2C2A",borderRadius:12,fontSize:18,textAlign:"center",letterSpacing:".2em",outline:"none"}}
-            />
-            {error && <div style={{color:"#B42318",fontSize:13,textAlign:"center",marginTop:8}}>{error}</div>}
-            <button onClick={handleStoreCode}
-              style={{width:"100%",marginTop:16,padding:14,background:storeCode ? "linear-gradient(90deg,#E85D04,#F48C06)" : "#ECE9E1",color:(storeCode)?"#fff":"#5F5D58",border:"none",borderRadius:10,fontSize:15,fontWeight:700,cursor:storeCode ? "pointer" : "default"}}>
-              次へ
-            </button>
-            <div style={{display:"flex",gap:8,marginTop:14}}>
-              <button onClick={()=>{setAuthMode("manager");setEmail("");setPassword("");setError("");setStep("honbu");}}
-                style={{flex:1,padding:10,background:"#F4F2EC",border:"1px solid #E4E0D6",color:"#5F5D58",borderRadius:8,fontSize:13,cursor:"pointer"}}>店長ログイン</button>
+            <div style={{fontSize:15,fontWeight:700,color:"#2C2C2A",marginBottom:16,textAlign:"center"}}>ログインする方を選んでください</div>
+            <div style={{display:"flex",flexDirection:"column",gap:12}}>
               <button onClick={()=>{setAuthMode("honbu");setEmail("");setPassword("");setError("");setStep("honbu");}}
-                style={{flex:1,padding:10,background:"#F4F2EC",border:"1px solid #E4E0D6",color:"#5F5D58",borderRadius:8,fontSize:13,cursor:"pointer"}}>本部ログイン</button>
+                style={{width:"100%",padding:"18px",background:"#E8792F",border:"none",color:"#fff",borderRadius:14,fontSize:17,fontWeight:800,cursor:"pointer"}}>
+                本部ログイン
+              </button>
+              <button onClick={()=>{setAuthMode("manager");setEmail("");setPassword("");setError("");setStep("honbu");}}
+                style={{width:"100%",padding:"18px",background:"#FFFFFF",border:"2px solid #E8792F",color:"#D9661C",borderRadius:14,fontSize:17,fontWeight:800,cursor:"pointer"}}>
+                店長ログイン
+              </button>
             </div>
+            <div style={{fontSize:13,color:"#6E6C66",textAlign:"center",marginTop:16,lineHeight:1.6}}>スタッフの方は、お店のタブレットに出ている<br/>ログインQRを読み取ってください。</div>
           </div>
         )}
 
