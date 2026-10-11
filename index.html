@@ -2448,11 +2448,11 @@ MISE TASKは飲食店・飲食チェーン向けのオペレーション管理�
 【発注管理】
 - 発注の流れ: 発注管理→「発注候補」タブ→在庫が少ない商品が業者ごとにグループ表示される→数量を確認・編集→「発注する」
 - 発注方法はLINE・メール・FAX・Instagram・X(Twitter)・SMSなど業者ごとに設定可能
-- LINE自動送信: 業者のLINE User IDが登録されている場合は自動でPush送信される
-- 手動送信の場合は「LINEで送る」「メールを開く」などのリンクが表示される
+- 発注確定時はアプリに発注が記録され、発注文が入った状態でLINE/メールが開く（自動送信はしない）
+- LINEは「LINEを開いて送る」→送る相手（業者さんのトーク）を選んで送信。電話・FAX・Instagram・Xは発注文をコピーして使う
 
 【業者登録とQR発行】
-- 業者登録: 発注管理→「業者」タブ→「＋業者を追加」→業者名を入力→「QR/URLを発行する」
+- 業者登録: 発注→「業者一覧」→「＋ 業者を追加」→「自分で入力する」か「業者さんに入力してもらう（QR/URL）」→続けて仕入れる商品を選ぶ
 - 発行されたQRコードまたはURLを業者に送付する（LINE・メール・FAX・印刷など）
 - 業者がQRまたはURLを開くと業者登録フォームが表示され、業者自身がLINE ID・メール・連絡先などを入力して登録する
 - 業者が登録を完了すると発注が使えるようになる
@@ -3127,33 +3127,11 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
     };
     setOrders(p=>[newOrder,...p]);
 
-    // LINEのUser IDが登録されている場合はNetlify Function経由でPush送信
+    // 送信はこの端末で開いたLINE/メール/電話で行う（自動送信はしない）。ここでは発注の記録だけを残す
     const methods = sup.orderMethods?.length ? sup.orderMethods : [sup.sendMethod];
-    if (methods.includes("line") && sup.lineId && sup.lineId.startsWith("U")) {
-      const orderText = buildOrderText(sup, items);
-      try {
-        const res = await fetch("/.netlify/functions/send-line", {
-          method: "POST",
-          headers: {"Content-Type":"application/json"},
-          body: JSON.stringify({
-            userId: sup.lineId,
-            orderText,
-            supplierName: sup.name,
-          }),
-        });
-        if (res.ok) {
-          notify(`✓ ${sup.name} へ LINE で発注を送信しました！`);
-        } else {
-          notify(`⚠ LINE送信に失敗しました。手動で連絡してください。`, "warn");
-        }
-      } catch {
-        notify(`⚠ LINE送信エラー。手動で連絡してください。`, "warn");
-      }
-    } else {
-      const methodLabels = methods
-        .map(m=>({email:"メール",line:"LINE",instagram:"Instagram",twitter:"X",other:"その他",fax:"FAX",sms:"SMS"})[m]||m).join(" / ");
-      notify(`✓ ${sup.name} へ ${methodLabels} で発注しました！`);
-    }
+    const methodLabels = methods
+      .map(m=>({email:"メール",line:"LINE",instagram:"Instagram",twitter:"X",other:"その他",fax:"FAX",sms:"SMS",tel:"電話"})[m]||m).join(" / ");
+    notify(`✓ ${sup.name} への発注を記録しました。${methodLabels}で送信してください`);
 
     setSelectedItems({});
     setConfirmOrder(null);
@@ -3174,8 +3152,9 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
     const enc = encodeURIComponent(text);
     const subj = encodeURIComponent("【発注】" + new Date().toLocaleDateString("ja-JP"));
     return methods.map(m => {
-      if (m==="email"     && sup.contact)     return {method:m, url:`mailto:${sup.contact}?subject=${subj}&body=${enc}`,       label:"メールを開く"};
-      if (m==="line"      && sup.lineId)      return sup.lineId.startsWith("U") ? {method:m, url:null, label:"LINE自動送信", auto:true} : {method:m, url:`https://line.me/R/oaMessage/${sup.lineId.replace("@","")}/?text=${enc}`, label:"LINEで送る"};
+      if (m==="email"     && sup.contact)     return {method:m, url:`mailto:${sup.contact}?subject=${subj}&body=${enc}`,       label:"メールを開いて送る"};
+      // LINE: 発注文を入れた状態でLINEを開き、送る相手（業者さんのトーク）を選んで送信する。個人のLINEでも使える
+      if (m==="line")                         return {method:m, url:`https://line.me/R/share?text=${enc}`, label:"LINEを開いて送る"};
       if (m==="instagram" && sup.instagramId) return {method:m, url:`https://www.instagram.com/${sup.instagramId.replace("@","")}/`, label:"Instagramを開く"};
       if (m==="twitter"   && sup.twitterId)   return {method:m, url:`https://x.com/${sup.twitterId.replace("@","")}/`, label:"X(Twitter)を開く"};
       if (m==="other"     && sup.otherDesc)   return {method:m, url:null, label:sup.otherDesc};
@@ -3248,35 +3227,37 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
           <div style={{marginTop:20}}>
             {(()=>{
               const links = buildSendLinks(confirmOrder.sup, confirmOrder.items);
-              const MCOL={email:"#0077B6",line:"#06C755",instagram:"#E1306C",twitter:"#ECE9E1",other:"#6b7280"};
+              const orderText = buildOrderText(confirmOrder.sup, confirmOrder.items);
+              const MCOL={email:"#0077B6",line:"#06C755",instagram:"#E1306C",twitter:"#2C2C2A",tel:"#0F6E56",fax:"#5F5D58",other:"#5F5D58"};
+              const ICON={email:"📧",line:"💬",instagram:"📸",twitter:"✕",tel:"📞",fax:"📠",other:"📝"};
+              const copyText = () => { try { navigator.clipboard.writeText(orderText).then(()=>notify("✓ 発注文をコピーしました")); } catch { notify("コピーできませんでした","warn"); } };
               return (
                 <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                  {links.length>0 ? links.map(lk=>(
-                    lk.auto
-                      ? <button key={lk.method} onClick={executeSendOrder}
-                          style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"13px",
-                            background:"linear-gradient(90deg,#06C755,#04a844)",
-                            color:"#fff",border:"none",borderRadius:10,fontSize:15,fontWeight:800,cursor:"pointer"}}>
-                          💬 LINEに自動送信する
-                        </button>
-                      : lk.url
+                  <div style={{fontSize:13,color:"#5F5D58",lineHeight:1.6,marginBottom:2}}>ボタンを押すと発注が記録され、発注文が入った状態で開きます。{links.some(l=>l.method==="line")?"LINEでは送る相手（業者さんのトーク）を選んで送信してください。":""}</div>
+                  {links.map(lk=>(
+                    lk.url
                       ? <a key={lk.method} href={lk.url} target="_blank" rel="noreferrer"
-                          onClick={executeSendOrder}
-                          style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"13px",
-                            background:`linear-gradient(90deg,${MCOL[lk.method]},${MCOL[lk.method]}cc)`,
-                            color:"#fff",borderRadius:10,fontSize:15,fontWeight:800,textDecoration:"none",cursor:"pointer"}}>
-                          {{email:"📧",line:"💬",instagram:"📸",twitter:"✕",other:"📝"}[lk.method]} {lk.label} で発注する
+                          onClick={()=>{ if(lk.method==="instagram"||lk.method==="twitter") copyText(); executeSendOrder(); }}
+                          style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"14px",
+                            background:MCOL[lk.method]||"#5F5D58",
+                            color:"#fff",borderRadius:12,fontSize:16,fontWeight:800,textDecoration:"none",cursor:"pointer"}}>
+                          {ICON[lk.method]||"📝"} {lk.label}
                         </a>
-                      : <button key={lk.method} onClick={executeSendOrder}
-                          style={{padding:"13px",background:"#ECE9E1",color:"#45433F",border:"1px solid #E4E0D6",borderRadius:10,fontSize:14,cursor:"pointer",fontWeight:700}}>
-                          📝 {lk.label} で発注する
+                      : <button key={lk.method} onClick={()=>{ copyText(); executeSendOrder(); }}
+                          style={{padding:"14px",background:"#FFFFFF",color:"#2C2C2A",border:"2px solid #EDE3D6",borderRadius:12,fontSize:15,cursor:"pointer",fontWeight:800}}>
+                          {ICON[lk.method]||"📝"} {lk.label}（発注文をコピーして記録）
                         </button>
-                  )) : (
-                    <button onClick={executeSendOrder}
-                      style={{padding:"13px",background:"linear-gradient(90deg,#E1F5EE,#10b981)",color:"#fff",border:"none",borderRadius:10,fontSize:15,fontWeight:800,cursor:"pointer"}}>
-                      ✓ 発注する
+                  ))}
+                  {links.length===0 && (
+                    <button onClick={()=>{ copyText(); executeSendOrder(); }}
+                      style={{padding:"14px",background:"#2F7A1F",color:"#fff",border:"none",borderRadius:12,fontSize:16,fontWeight:800,cursor:"pointer"}}>
+                      ✓ 発注を記録する（発注文をコピー）
                     </button>
                   )}
+                  <button onClick={copyText}
+                    style={{padding:"11px",background:"#FFFFFF",color:"#45433F",border:"2px solid #EDE3D6",borderRadius:12,fontSize:14,fontWeight:700,cursor:"pointer"}}>
+                    📋 発注文だけコピーする
+                  </button>
                   <button onClick={()=>setConfirmOrder(null)}
                     style={{padding:"10px",background:"transparent",color:"#B42318",border:"1px solid #F5C2C0",borderRadius:8,fontSize:14,cursor:"pointer"}}>
                     ✕ キャンセル
