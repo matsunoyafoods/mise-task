@@ -3135,7 +3135,7 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
     notify(`✓ ${sup.name} への発注を記録しました。${methodLabels}で送信してください`);
 
     setSelectedItems({});
-    setSentInfo({sup, links: buildSendLinks(sup, items), text: buildOrderText(sup, items)});
+    setSentInfo({sup, items, text: buildOrderText(sup, items)});
     setConfirmOrder(null);
   };
 
@@ -3148,9 +3148,9 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
   };
 
   // 送信リンクを生成（登録されたorderMethodsから最初の有効な方法）
-  const buildSendLinks = (sup, items) => {
+  const buildSendLinks = (sup, items, textOverride) => {
     const methods = sup.orderMethods?.length ? sup.orderMethods : [sup.sendMethod];
-    const text = buildOrderText(sup, items);
+    const text = textOverride != null ? textOverride : buildOrderText(sup, items);
     const enc = encodeURIComponent(text);
     const subj = encodeURIComponent("【発注】" + new Date().toLocaleDateString("ja-JP"));
     return methods.map(m => {
@@ -3201,7 +3201,8 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
   return (
     <div>
       {sentInfo && (()=>{
-        const {sup, links, text} = sentInfo;
+        const {sup, items, text} = sentInfo;
+        const links = buildSendLinks(sup, items, text); // 下の文章（直した場合は直した後）で開く
         const MCOL={email:"#0077B6",line:"#06C755",instagram:"#E1306C",twitter:"#2C2C2A",tel:"#0F6E56",fax:"#5F5D58",other:"#5F5D58"};
         const ICON={email:"📧",line:"💬",instagram:"📸",twitter:"✕",tel:"📞",fax:"📠",other:"📝"};
         const copyText = () => { try { navigator.clipboard.writeText(text).then(()=>notify("✓ 発注文をコピーしました")); } catch { notify("コピーできませんでした","warn"); } };
@@ -3209,6 +3210,10 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
           <Modal onClose={()=>setSentInfo(null)} width={440}>
             <div style={{fontSize:20,fontWeight:800,color:"#2C2C2A",marginBottom:4}}>✓ 発注を記録しました</div>
             <div style={{fontSize:14,color:"#5F5D58",lineHeight:1.6,marginBottom:14}}>{sup.name} さんに送ってください。{links.some(l=>l.method==="line")?"LINEが開いたら、送る相手（"+sup.name+" さんのトーク）を選んで送信します。":""}</div>
+            <div style={{fontSize:13,fontWeight:700,color:"#45433F",marginBottom:6}}>送る文章（送る前に確認・書き直しできます）</div>
+            <textarea value={text} onChange={e=>setSentInfo(p=>({...p,text:e.target.value}))}
+              rows={Math.min(14, Math.max(6, String(text).split("\n").length+1))}
+              style={{width:"100%",padding:"12px",background:"#FBFAF7",border:"1px solid #E4E0D6",borderRadius:12,fontSize:15,lineHeight:1.6,color:"#2C2C2A",fontFamily:"inherit",resize:"vertical",marginBottom:14}}/>
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
               {links.map(lk=>(
                 lk.url ? (
