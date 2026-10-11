@@ -293,7 +293,7 @@ let INITIAL_STORES = DEMO_DATA.STORES;
 
 let INITIAL_SUPPLIERS = DEMO_DATA.SUPPLIERS;
 const SEND_METHOD_LABELS = { email:"📧 メール", line:"💬 LINE", fax:"📠 FAX", sms:"📱 SMS", instagram:"📸 Instagram", twitter:"✕ X", other:"📝 その他" };
-const SEND_METHOD_COLORS = { email:"#E6F1FB", line:"#06C755", fax:"#6D28D9", sms:"#C9184A", instagram:"#E1306C", twitter:"#555", other:"#6b7280" };
+const SEND_METHOD_COLORS = { email:"#0077B6", line:"#06C755", fax:"#6D28D9", sms:"#C9184A", instagram:"#E1306C", twitter:"#555", other:"#6b7280" };
 
 
 // ─── UNITS ───────────────────────────────────
@@ -573,7 +573,7 @@ function NormalConfirmModal({item, onNormal, onAbnormal, onClose}) {
         <button
           onClick={()=>{ if(inputVal===""){ return; } onAbnormal(inputVal); }}
           disabled={inputVal===""}
-          style={{width:"100%",padding:12,background:inputVal?"linear-gradient(90deg,#E85D04,#F48C06)":"#ECE9E1",color:"#fff",border:"none",borderRadius:8,fontSize:15,fontWeight:700,cursor:inputVal?"pointer":"default"}}>
+          style={{width:"100%",padding:12,background:inputVal?"linear-gradient(90deg,#E85D04,#F48C06)":"#ECE9E1",color:(inputVal)?"#fff":"#5F5D58",border:"none",borderRadius:8,fontSize:15,fontWeight:700,cursor:inputVal?"pointer":"default"}}>
           この数値で完了
         </button>
       </Modal>
@@ -595,7 +595,7 @@ function NormalConfirmModal({item, onNormal, onAbnormal, onClose}) {
           ✅ 正常<br/><span style={{fontSize:12,fontWeight:400,opacity:.8}}>ワンタップで完了</span>
         </button>
         <button onClick={()=>setShowInput(true)}
-          style={{flex:1,padding:16,background:"linear-gradient(135deg,#FDEDEC,#dc2626)",color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:800,cursor:"pointer",lineHeight:1.4}}>
+          style={{flex:1,padding:16,background:"linear-gradient(135deg,#991b1b,#dc2626)",color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:800,cursor:"pointer",lineHeight:1.4}}>
           ⚠️ 異常あり<br/><span style={{fontSize:12,fontWeight:400,opacity:.8}}>数値を入力</span>
         </button>
       </div>
@@ -634,7 +634,7 @@ function StaffMultiPickModal({title, subtitle, storeId, onConfirm, onClose}) {
       </div>
       <div style={{display:"flex",gap:8}}>
         <button onClick={()=>onConfirm(sel.length>0 ? sel : [])}
-          style={{flex:1,padding:11,background:sel.length>0?"linear-gradient(90deg,#E85D04,#F48C06)":"#ECE9E1",color:"#fff",border:"none",borderRadius:8,fontSize:14,fontWeight:700,cursor:"pointer"}}>
+          style={{flex:1,padding:11,background:sel.length>0?"linear-gradient(90deg,#E85D04,#F48C06)":"#ECE9E1",color:(sel.length>0)?"#fff":"#5F5D58",border:"none",borderRadius:8,fontSize:14,fontWeight:700,cursor:"pointer"}}>
           {sel.length>0 ? "✓ 完了（"+sel.length+"名）" : "担当者不明で完了"}
         </button>
       </div>
@@ -741,7 +741,7 @@ function AmountVerifyModal({task, recipe, onConfirm, onCancel}) {
             <div style={{display:"flex",alignItems:"center",gap:8}}>
               <input type="number" inputMode="decimal" placeholder="実際の使用量" value={inputs[ing.name]}
                 onChange={e=>setInputs(p=>({...p,[ing.name]:e.target.value}))}
-                style={{flex:1,padding:"9px",background:ing.warn?"#FDEDEC":ing.ok?"#EAF3DE":"#FFFFFF",border:"1px solid "+(ing.warn?"#F6CFAF":ing.ok?"#C0DD97":"#E4E0D6"),color:"#2C2C2A",borderRadius:8,fontSize:14}}/>
+                style={{flex:1,padding:"9px",background:ing.warn?"#FDEDEC":ing.ok?"#EAF3DE":"#FFFFFF",border:"1px solid "+(ing.warn?"#9a3412":ing.ok?"#C0DD97":"#E4E0D6"),color:"#2C2C2A",borderRadius:8,fontSize:14}}/>
               <span style={{fontSize:13,color:"#5F5D58"}}>{ing.unit}</span>
               {ing.actual > 0 && <Chip label={ing.ok?"✓ OK":`${dp>0?"+":""}${dp}%`} color={ing.ok?"#2F7A1F":"#B42318"} bg={ing.ok?"#EAF3DE":"#FDEDEC"}/>}
             </div>
@@ -785,7 +785,7 @@ function InspectionModal({order, suppliers, onComplete, onClose}) {
           {l.byCase && <div style={{fontSize:13,color:"#0369A1",marginBottom:4}}>実際に入っていた {l.baseUnit} を入力してください（在庫に反映）</div>}
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <input type="number" inputMode="decimal" value={l.received} onChange={e=>update(idx,e.target.value)}
-              style={{flex:1,padding:"9px",background:l.ok?"#EAF3DE":"#FDEDEC",border:`1px solid ${l.ok?"#C0DD97":"#F6CFAF"}`,color:"#2C2C2A",borderRadius:8,fontSize:14}}/>
+              style={{flex:1,padding:"9px",background:l.ok?"#EAF3DE":"#FDEDEC",border:`1px solid ${l.ok?"#C0DD97":"#9a3412"}`,color:"#2C2C2A",borderRadius:8,fontSize:14}}/>
             <span style={{fontSize:13,color:"#5F5D58"}}>{l.unit}</span>
             {l.received > 0 && <Chip label={l.ok?"✓ OK":`差異: ${(l.received-l.expected).toLocaleString()}`} color={l.ok?"#2F7A1F":"#B42318"} bg={l.ok?"#EAF3DE":"#FDEDEC"}/>}
           </div>
@@ -847,7 +847,7 @@ function IssueSupplierModal({onClose, setSuppliers, notify}) {
               閉じる
             </button>
             <button onClick={issue}
-              style={{flex:2,padding:12,background:name.trim()?"linear-gradient(90deg,#6D28D9,#7c3aed)":"#ECE9E1",color:"#fff",border:"none",borderRadius:8,fontSize:15,fontWeight:700,cursor:name.trim()?"pointer":"default"}}>
+              style={{flex:2,padding:12,background:name.trim()?"linear-gradient(90deg,#6D28D9,#7c3aed)":"#ECE9E1",color:(name.trim())?"#fff":"#5F5D58",border:"none",borderRadius:8,fontSize:15,fontWeight:700,cursor:name.trim()?"pointer":"default"}}>
               QR / URL を発行する
             </button>
           </div>
@@ -1045,7 +1045,7 @@ function SupplierSelfRegModal({token, suppliers, setSuppliers, onClose}) {
             ))}
           </div>
           <button onClick={()=>form.companyName.trim()&&setStep(2)}
-            style={{width:"100%",padding:13,background:form.companyName.trim()?"linear-gradient(90deg,#6D28D9,#7c3aed)":"#ECE9E1",color:"#fff",border:"none",borderRadius:10,fontSize:15,fontWeight:800,cursor:form.companyName.trim()?"pointer":"default"}}>
+            style={{width:"100%",padding:13,background:form.companyName.trim()?"linear-gradient(90deg,#6D28D9,#7c3aed)":"#ECE9E1",color:(form.companyName.trim())?"#fff":"#5F5D58",border:"none",borderRadius:10,fontSize:15,fontWeight:800,cursor:form.companyName.trim()?"pointer":"default"}}>
             次へ →
           </button>
         </div>
@@ -1084,7 +1084,7 @@ function SupplierSelfRegModal({token, suppliers, setSuppliers, onClose}) {
           <div style={{display:"flex",gap:10}}>
             <button onClick={()=>setStep(1)} style={{flex:1,padding:11,background:"#ECE9E1",color:"#5F5D58",border:"none",borderRadius:8,cursor:"pointer",fontSize:14}}>← 戻る</button>
             <button onClick={()=>{if(form.methods.length>0){setMethodStep(0);setStep(3);}}}
-              style={{flex:2,padding:11,background:form.methods.length>0?"linear-gradient(90deg,#6D28D9,#7c3aed)":"#ECE9E1",color:"#fff",border:"none",borderRadius:10,fontSize:15,fontWeight:800,cursor:form.methods.length>0?"pointer":"default"}}>
+              style={{flex:2,padding:11,background:form.methods.length>0?"linear-gradient(90deg,#6D28D9,#7c3aed)":"#ECE9E1",color:(form.methods.length>0)?"#fff":"#5F5D58",border:"none",borderRadius:10,fontSize:15,fontWeight:800,cursor:form.methods.length>0?"pointer":"default"}}>
               次へ →（{form.methods.length}件選択）
             </button>
           </div>
@@ -1286,7 +1286,7 @@ function Dashboard({allPrepTasks, cleanTasks, hqTasks, setHqTasks, currentUserId
           </div>
         )}
 
-        <div style={{background:hasUrgent?"#FFFFFF":"#FFFFFF",border:`1px solid ${hasUrgent?"#F6CFAF":"#E4E0D6"}`,borderRadius:14,padding:20}}>
+        <div style={{background:hasUrgent?"#FFFFFF":"#FFFFFF",border:`1px solid ${hasUrgent?"#9a3412":"#E4E0D6"}`,borderRadius:14,padding:20}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
             <div style={{fontSize:14,fontWeight:700,color:hasUrgent?"#C2410C":"#5F5D58"}}>
               {hasUrgent?"⚠ 本部タスク":"本部タスク"}
@@ -1476,7 +1476,7 @@ function RecipeAIPanel({ recipes, setRecipes, notify }) {
         {preview ? <img src={preview} alt="" style={{maxWidth:"100%",maxHeight:160,borderRadius:8,objectFit:"contain"}}/> :
           <><div style={{fontSize:32,marginBottom:6}}>{file?"📄":"☁️"}</div><div style={{fontSize:13,color:"#6E6C66",whiteSpace:"pre-line"}}>{file?file.name:"レシピのPDF・写真をドロップ\nまたはタップして選択"}</div></>}
       </div>
-      {file && <button onClick={analyze} disabled={loading} style={{width:"100%",padding:11,background:loading?"#ECE9E1":"linear-gradient(90deg,#E85D04,#F48C06)",color:"#2C2C2A",border:"none",borderRadius:8,fontSize:14,fontWeight:700,cursor:"pointer",marginBottom:8}}>
+      {file && <button onClick={analyze} disabled={loading} style={{width:"100%",padding:11,background:loading?"#ECE9E1":"linear-gradient(90deg,#E85D04,#F48C06)",color:(loading)?"#5F5D58":"#fff",border:"none",borderRadius:8,fontSize:14,fontWeight:700,cursor:"pointer",marginBottom:8}}>
         {loading ? "🔄 AI解析中..." : "🤖 AIで読み取る"}
       </button>}
       {error && <div style={{background:"rgba(239,68,68,0.1)",border:"1px solid #ef444444",color:"#B42318",padding:8,borderRadius:6,fontSize:13,marginBottom:8}}>{error}</div>}
@@ -1624,7 +1624,7 @@ function SupplierAIPanel({ inventory, setInventory, suppliers, setSuppliers, not
   };
 
   const S = {
-    drop: (on) => ({ border:"2px dashed "+(on?"#B5D4F4":"#E4E0D6"), borderRadius:10, padding:28, textAlign:"center", cursor:"pointer", background:on?"rgba(0,119,182,0.05)":"transparent", marginBottom:12 }),
+    drop: (on) => ({ border:"2px dashed "+(on?"#0077B6":"#E4E0D6"), borderRadius:10, padding:28, textAlign:"center", cursor:"pointer", background:on?"rgba(0,119,182,0.05)":"transparent", marginBottom:12 }),
     input: { background:"#F4F2EC", border:"1px solid #E4E0D6", borderRadius:6, padding:"7px 10px", color:"#2C2C2A", fontSize:13, outline:"none", width:"100%", boxSizing:"border-box" },
     th: { padding:"7px 5px", color:"#5F5D58", fontSize:13, fontWeight:700, borderBottom:"1px solid #E4E0D6", textAlign:"left", whiteSpace:"nowrap" },
     td: { padding:"3px 2px", borderBottom:"1px solid #E4E0D6" },
@@ -1639,7 +1639,7 @@ function SupplierAIPanel({ inventory, setInventory, suppliers, setSuppliers, not
         {preview ? <img src={preview} alt="" style={{maxWidth:"100%",maxHeight:160,borderRadius:8,objectFit:"contain"}}/> :
           <><div style={{fontSize:32,marginBottom:6}}>{file?"📄":"☁️"}</div><div style={{fontSize:13,color:"#6E6C66",whiteSpace:"pre-line"}}>{file?file.name:"取引業者から単価表を作成してもらい\nここに添付してください"}</div></>}
       </div>
-      {file && <button onClick={analyze} disabled={loading} style={{width:"100%",padding:11,background:loading?"#ECE9E1":"linear-gradient(90deg,#E6F1FB,#00B4D8)",color:"#2C2C2A",border:"none",borderRadius:8,fontSize:14,fontWeight:700,cursor:"pointer",marginBottom:8}}>
+      {file && <button onClick={analyze} disabled={loading} style={{width:"100%",padding:11,background:loading?"#ECE9E1":"linear-gradient(90deg,#0077B6,#00B4D8)",color:(loading)?"#5F5D58":"#fff",border:"none",borderRadius:8,fontSize:14,fontWeight:700,cursor:"pointer",marginBottom:8}}>
         {loading ? "🔄 AI解析中..." : "🤖 AIで読み取る"}
       </button>}
       {error && <div style={{background:"rgba(239,68,68,0.1)",border:"1px solid #ef444444",color:"#B42318",padding:8,borderRadius:6,fontSize:13,marginBottom:8}}>{error}</div>}
@@ -1700,7 +1700,7 @@ function SupplierAIPanel({ inventory, setInventory, suppliers, setSuppliers, not
             );
           })()}
           <button style={{background:"none",border:"1px dashed #E4E0D6",color:"#6E6C66",borderRadius:6,padding:"6px",cursor:"pointer",fontSize:13,width:"100%",marginBottom:8}} onClick={()=>setResult({...result,items:[...(result.items||[]),{name:"",unit:"",unitPrice:""}]})}>＋ 商品を追加</button>
-          <div style={{background:"rgba(0,119,182,0.08)",border:"1px solid #B5D4F4",borderRadius:6,padding:8,fontSize:13,color:"#0369A1",marginBottom:8}}>
+          <div style={{background:"rgba(0,119,182,0.08)",border:"1px solid #0077B644",borderRadius:6,padding:8,fontSize:13,color:"#0369A1",marginBottom:8}}>
             💡 同じ商品は1つに統合。登録済みで単価変更なしは非表示。🟢新規＝追加 / 🔴値上げ・🔵値下げ＝単価更新（在庫数は変えません）。
           </div>
           <button onClick={save} style={{width:"100%",padding:11,background:"linear-gradient(90deg,#E1F5EE,#10b981)",color:"#fff",border:"none",borderRadius:8,fontSize:14,fontWeight:700,cursor:"pointer"}}>💾 在庫管理に登録する</button>
@@ -1809,7 +1809,7 @@ function StoreSection({stores, setStores, users, setUsers, notify}) {
               キャンセル
             </button>
             <button onClick={saveStore}
-              style={{flex:2,padding:11,background:"linear-gradient(90deg,#E6F1FB,#0096c7)",color:"#fff",border:"none",borderRadius:8,fontSize:14,fontWeight:700,cursor:"pointer"}}>
+              style={{flex:2,padding:11,background:"linear-gradient(90deg,#0077B6,#0096c7)",color:"#fff",border:"none",borderRadius:8,fontSize:14,fontWeight:700,cursor:"pointer"}}>
               {storeForm._isNew?"追加する":"保存する"}
             </button>
           </div>
@@ -1850,7 +1850,7 @@ function StoreSection({stores, setStores, users, setUsers, notify}) {
           <p style={{fontSize:13,color:"#5F5D58"}}>店舗の追加・編集・削除（本部のみ）</p>
         </div>
         <button onClick={openNewStore}
-          style={{display:"flex",alignItems:"center",gap:8,padding:"10px 20px",background:"linear-gradient(90deg,#E6F1FB,#0096c7)",color:"#fff",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer"}}>
+          style={{display:"flex",alignItems:"center",gap:8,padding:"10px 20px",background:"linear-gradient(90deg,#0077B6,#0096c7)",color:"#fff",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer"}}>
           ＋ 店舗を追加
         </button>
       </div>
@@ -1858,7 +1858,7 @@ function StoreSection({stores, setStores, users, setUsers, notify}) {
         {stores.map(s=>{
           const cnt = users.filter(u=>u.store===s.id).length;
           return (
-            <div key={s.id} style={{display:"flex",alignItems:"center",gap:14,padding:"14px 18px",background:"#FFFFFF",border:"1px solid #E4E0D6",borderRadius:12,borderLeft:"3px solid #B5D4F4"}}>
+            <div key={s.id} style={{display:"flex",alignItems:"center",gap:14,padding:"14px 18px",background:"#FFFFFF",border:"1px solid #E4E0D6",borderRadius:12,borderLeft:"3px solid #0077B6"}}>
               <div style={{fontSize:22}}>🏪</div>
               <div style={{flex:1}}>
                 <div style={{fontSize:15,fontWeight:700,color:"#2C2C2A"}}>{s.name}</div>
@@ -1884,7 +1884,7 @@ function StoreSection({stores, setStores, users, setUsers, notify}) {
 
 function StaffView({users, setUsers, stores, setStores, storeFilter, notify, resetAllData}) {
   const ROLES = ["本部","店長","スタッフ","アルバイト"];
-  const COLORS = ["#E85D04","#C9184A","#E6F1FB","#E1F5EE","#9B2226","#FBEAF0","#6D28D9","#E1F5EE","#b45309","#1d4ed8"];
+  const COLORS = ["#E85D04","#C9184A","#0077B6","#E1F5EE","#9B2226","#FBEAF0","#6D28D9","#E1F5EE","#b45309","#1d4ed8"];
   const [editForm, setEditForm] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
 
@@ -1963,7 +1963,7 @@ function StaffView({users, setUsers, stores, setStores, storeFilter, notify, res
                 {INITIAL_STORES.map(s=>(
                   <button key={s.id} onClick={()=>setEditForm(p=>({...p,store:s.id}))}
                     style={{padding:"7px 18px",borderRadius:20,border:"none",cursor:"pointer",fontSize:13,
-                      background:editForm.store===s.id?"#E6F1FB":"#ECE9E1",color:editForm.store===s.id?"#fff":"#5F5D58"}}>
+                      background:editForm.store===s.id?"#0077B6":"#ECE9E1",color:editForm.store===s.id?"#fff":"#5F5D58"}}>
                     {s.name}
                   </button>
                 ))}
@@ -2621,7 +2621,7 @@ function PrepView({allTasks, setAllTasks, currentUserId, recipes, notify, setInv
               <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",flexShrink:0}}>
                 {taskRecipe && (
                   <button onClick={()=>setShowRecipe(task.recipeId)}
-                    style={{padding:"6px 12px",background:"#E6F1FB",border:"1px solid #B5D4F4",color:"#0369A1",borderRadius:8,cursor:"pointer",fontSize:13}}>
+                    style={{padding:"6px 12px",background:"#E6F1FB",border:"1px solid #0077B644",color:"#0369A1",borderRadius:8,cursor:"pointer",fontSize:13}}>
                     📋 レシピ
                   </button>
                 )}
@@ -2780,7 +2780,7 @@ function DemandSettingsModal({ config, onSave, onClose }) {
           <option value="event">イベント</option><option value="holiday">祝日</option>
         </select>
         <input value={nd.label} onChange={e=>setNd(p=>({...p,label:e.target.value}))} placeholder="名称（例: 花火大会）" style={{flex:1,minWidth:120,padding:"7px",background:"#FFFFFF",border:"1px solid #E4E0D6",color:"#2C2C2A",borderRadius:7,fontSize:13}}/>
-        <Btn onClick={addSpecial} color="#E6F1FB" style={{padding:"7px 14px"}}>追加</Btn>
+        <Btn onClick={addSpecial} color="#0077B6" style={{padding:"7px 14px"}}>追加</Btn>
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:18,maxHeight:160,overflowY:"auto"}}>
         {(d.specialDays||[]).length===0
@@ -2952,7 +2952,7 @@ function OrderView({inventory, setInventory, suppliers, setSuppliers, orders, se
               {(confirmOrder.sup.orderMethods?.length ? confirmOrder.sup.orderMethods : [confirmOrder.sup.sendMethod]).map(m=>{
                 const MICO={email:"📧",line:"💬",instagram:"📸",twitter:"✕",other:"📝",fax:"📠",sms:"📱"};
                 const MLABEL={email:"メール",line:"LINE",instagram:"Instagram",twitter:"X",other:"その他",fax:"FAX",sms:"SMS"};
-                const MCOL={email:"#E6F1FB",line:"#06C755",instagram:"#E1306C",twitter:"#555",other:"#6b7280",fax:"#9B2226",sms:"#6D28D9"};
+                const MCOL={email:"#0077B6",line:"#06C755",instagram:"#E1306C",twitter:"#555",other:"#6b7280",fax:"#9B2226",sms:"#6D28D9"};
                 return (
                   <span key={m} style={{fontSize:13,padding:"4px 10px",borderRadius:20,background:(MCOL[m]||"#ECE9E1")+"33",color:MCOL[m]||"#5F5D58",border:"1px solid "+(MCOL[m]||"#E4E0D6")+"66",fontWeight:700}}>
                     {MICO[m]} {MLABEL[m]}
@@ -2970,14 +2970,14 @@ function OrderView({inventory, setInventory, suppliers, setSuppliers, orders, se
           <div style={{marginTop:20}}>
             {(()=>{
               const links = buildSendLinks(confirmOrder.sup, confirmOrder.items);
-              const MCOL={email:"#E6F1FB",line:"#06C755",instagram:"#E1306C",twitter:"#ECE9E1",other:"#6b7280"};
+              const MCOL={email:"#0077B6",line:"#06C755",instagram:"#E1306C",twitter:"#ECE9E1",other:"#6b7280"};
               return (
                 <div style={{display:"flex",flexDirection:"column",gap:8}}>
                   {links.length>0 ? links.map(lk=>(
                     lk.auto
                       ? <button key={lk.method} onClick={executeSendOrder}
                           style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"13px",
-                            background:"linear-gradient(90deg,#06C755,#EAF3DE)",
+                            background:"linear-gradient(90deg,#06C755,#04a844)",
                             color:"#fff",border:"none",borderRadius:10,fontSize:15,fontWeight:800,cursor:"pointer"}}>
                           💬 LINEに自動送信する
                         </button>
@@ -3052,7 +3052,7 @@ function OrderView({inventory, setInventory, suppliers, setSuppliers, orders, se
             <div style={{display:"flex",gap:6}}>
               {[["今日",dateStr(0)],["明日",dateStr(-1)],["明後日",dateStr(-2)]].map(([lbl,d])=>(
                 <button key={d} onClick={()=>setTargetDay(d)}
-                  style={{padding:"5px 12px",borderRadius:8,border:"none",cursor:"pointer",fontSize:13,background:targetDay===d?"#E6F1FB":"#ECE9E1",color:targetDay===d?"#fff":"#5F5D58"}}>{lbl}（{wd(d)}）</button>
+                  style={{padding:"5px 12px",borderRadius:8,border:"none",cursor:"pointer",fontSize:13,background:targetDay===d?"#0077B6":"#ECE9E1",color:targetDay===d?"#fff":"#5F5D58"}}>{lbl}（{wd(d)}）</button>
               ))}
             </div>
             <span style={{fontSize:13,fontWeight:700,padding:"3px 10px",borderRadius:8,background: level==="weekday"?"#ECE9E1":"#FDF0E6",color: level==="weekday"?"#5F5D58":"#A16207"}}>
@@ -3083,7 +3083,7 @@ function OrderView({inventory, setInventory, suppliers, setSuppliers, orders, se
                           {(sup.orderMethods?.length ? sup.orderMethods : [sup.sendMethod]).map(m=>{
                             const MICO = {email:"📧",line:"💬",instagram:"📸",twitter:"✕",other:"📝",fax:"📠",sms:"📱"};
                             const MLABEL = {email:"メール",line:"LINE",instagram:"Instagram",twitter:"X",other:"その他",fax:"FAX",sms:"SMS"};
-                            const MCOL = {email:"#E6F1FB",line:"#06C755",instagram:"#E1306C",twitter:"#555",other:"#6b7280",fax:"#9B2226",sms:"#6D28D9"};
+                            const MCOL = {email:"#0077B6",line:"#06C755",instagram:"#E1306C",twitter:"#555",other:"#6b7280",fax:"#9B2226",sms:"#6D28D9"};
                             return (
                               <span key={m} style={{fontSize:12,padding:"2px 7px",borderRadius:10,background:(MCOL[m]||"#ECE9E1")+"22",color:MCOL[m]||"#5F5D58",border:"1px solid "+(MCOL[m]||"#E4E0D6")+"44"}}>
                                 {MICO[m]} {MLABEL[m]}
@@ -3536,9 +3536,9 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
           <p style={{fontSize:13,color:"#5F5D58"}}>在庫残量・カテゴリー別確認・商品登録</p>
         </div>
         <div style={{display:"flex",gap:8}}>
-          {!storeFilter && currentUserId !== null && <div style={{display:"flex",gap:6}}>{INITIAL_STORES.map(s=><button key={s.id} onClick={()=>setActiveStore(s.id)} style={{padding:"7px 16px",borderRadius:20,border:"none",cursor:"pointer",fontSize:13,background:activeStore===s.id?"#E6F1FB":"#ECE9E1",color:activeStore===s.id?"#fff":"#5F5D58"}}>{s.name}</button>)}</div>}
+          {!storeFilter && currentUserId !== null && <div style={{display:"flex",gap:6}}>{INITIAL_STORES.map(s=><button key={s.id} onClick={()=>setActiveStore(s.id)} style={{padding:"7px 16px",borderRadius:20,border:"none",cursor:"pointer",fontSize:13,background:activeStore===s.id?"#0077B6":"#ECE9E1",color:activeStore===s.id?"#fff":"#5F5D58"}}>{s.name}</button>)}</div>}
           {(INITIAL_STORES||[]).length>1 && <Btn onClick={()=>setCopyModal(true)} color="#6D28D9">📋 他店舗にコピー</Btn>}
-          <Btn onClick={openNew} color="#E6F1FB">＋ 商品登録</Btn>
+          <Btn onClick={openNew} color="#0077B6">＋ 商品登録</Btn>
         </div>
       </div>
 
@@ -3565,7 +3565,7 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
 
       <div style={{display:"flex",gap:6,marginBottom:18}}>
         {[["stock","在庫一覧"],["stocktake","棚卸し"],["submitted",`提出履歴${visibleStocktakes.length?`(${visibleStocktakes.length})`:""}`]].map(([id,label])=>(
-          <button key={id} onClick={()=>setTab(id)} style={{padding:"7px 16px",borderRadius:20,border:"none",cursor:"pointer",fontSize:13,background:tab===id?"#E6F1FB":"#ECE9E1",color:tab===id?"#fff":"#5F5D58"}}>{label}</button>
+          <button key={id} onClick={()=>setTab(id)} style={{padding:"7px 16px",borderRadius:20,border:"none",cursor:"pointer",fontSize:13,background:tab===id?"#0077B6":"#ECE9E1",color:tab===id?"#fff":"#5F5D58"}}>{label}</button>
         ))}
       </div>
 
@@ -3649,7 +3649,7 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
           </div>
           <div style={{display:"flex",gap:10}}>
             <Btn onClick={()=>setShowForm(false)} color="#ECE9E1" style={{color:"#5F5D58"}}>キャンセル</Btn>
-            <Btn onClick={saveItem} color="#E6F1FB">{editItem?"更新する":"登録する"}</Btn>
+            <Btn onClick={saveItem} color="#0077B6">{editItem?"更新する":"登録する"}</Btn>
           </div>
         </Modal>
       )}
@@ -3687,7 +3687,7 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
                 const diff = actual !== "" ? Number(actual) - item.stock : null;
                 const isAlert = diff !== null && item.stock > 0 && Math.abs(diff/item.stock) > 0.10;
                 return (
-                  <div key={item.id} style={{background:isAlert?"#FFFFFF":"#FFFFFF",border:`1px solid ${isAlert?"#F6CFAF":"#E4E0D6"}`,borderRadius:12,padding:14,marginBottom:8}}>
+                  <div key={item.id} style={{background:isAlert?"#FFFFFF":"#FFFFFF",border:`1px solid ${isAlert?"#9a3412":"#E4E0D6"}`,borderRadius:12,padding:14,marginBottom:8}}>
                     <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
                       <div style={{flex:1,minWidth:120}}>
                         <div style={{fontSize:14,fontWeight:700,color:"#2C2C2A"}}>{item.name}</div>
@@ -3695,7 +3695,7 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
                       </div>
                       <input type="number" placeholder="実数量" value={actual}
                         onChange={e=>setStocktake(p=>({...p,[item.id]:e.target.value}))}
-                        style={{width:110,padding:"7px",background:"#FFFFFF",border:`1px solid ${isAlert?"#F6CFAF":"#E4E0D6"}`,color:"#2C2C2A",borderRadius:8,fontSize:13}}/>
+                        style={{width:110,padding:"7px",background:"#FFFFFF",border:`1px solid ${isAlert?"#9a3412":"#E4E0D6"}`,color:"#2C2C2A",borderRadius:8,fontSize:13}}/>
                       <span style={{fontSize:13,color:"#5F5D58"}}>{item.unit}</span>
                       {diff !== null && <Chip label={`${diff>=0?"+":""}${diff}${item.unit}${isAlert?" ⚠本部報告":""}`} color={isAlert?"#B42318":"#2F7A1F"} bg={isAlert?"#FDEDEC":"#EAF3DE"}/>}
                     </div>
@@ -3704,7 +3704,7 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
               })}
             </div>
           ))}
-          <Btn onClick={submitStocktake} color="#E6F1FB" style={{width:"100%",padding:14,fontSize:15}}>棚卸し完了・本部へ提出</Btn>
+          <Btn onClick={submitStocktake} color="#0077B6" style={{width:"100%",padding:14,fontSize:15}}>棚卸し完了・本部へ提出</Btn>
         </div>
       )}
 
@@ -3899,7 +3899,7 @@ function TaskManagerView({routines, setRoutines, allPrepTasks, setAllPrepTasks, 
           <p style={{fontSize:13,color:"#5F5D58"}}>ルーティン設定・手動追加・スケジュール管理</p>
         </div>
         <div style={{display:"flex",gap:8}}>
-          <Btn onClick={()=>setShowSingle(true)} color="#E6F1FB" style={{border:"1px solid #B5D4F4"}}>＋ 1件追加</Btn>
+          <Btn onClick={()=>setShowSingle(true)} color="#E6F1FB" style={{border:"1px solid #0077B644"}}>＋ 1件追加</Btn>
           <Btn onClick={openNew} color="#E85D04">＋ ルーティン登録</Btn>
         </div>
       </div>
@@ -3992,7 +3992,7 @@ function TaskManagerView({routines, setRoutines, allPrepTasks, setAllPrepTasks, 
                   <InvPicker items={storeInv} value={ing.itemId} name={ing.name}
                     onPick={it=>setForm(p=>{const a=[...(p.ingredients||[])];a[idx]={...a[idx],itemId:it.id,name:it.name,unit:it.unit};return{...p,ingredients:a};})}/>
                   {ing.random
-                    ? <span style={{width:84,padding:"8px",background:"#EEEDFE",border:"1px solid #CECBF6",color:"#6D28D9",borderRadius:8,fontSize:13,textAlign:"center",boxSizing:"border-box"}}>完了時に入力</span>
+                    ? <span style={{width:84,padding:"8px",background:"#EEEDFE",border:"1px solid #4c1d95",color:"#6D28D9",borderRadius:8,fontSize:13,textAlign:"center",boxSizing:"border-box"}}>完了時に入力</span>
                     : <input type="number" inputMode="decimal" value={ing.amount} placeholder="数量"
                     onChange={e=>setForm(p=>{const a=[...(p.ingredients||[])];a[idx]={...a[idx],amount:e.target.value};return{...p,ingredients:a};})}
                     style={{width:84,padding:"8px",background:"#FFFFFF",border:"1px solid #E4E0D6",color:"#2C2C2A",borderRadius:8,fontSize:14,textAlign:"right"}}/>}
@@ -4123,7 +4123,7 @@ function TaskManagerView({routines, setRoutines, allPrepTasks, setAllPrepTasks, 
               <div style={{marginBottom:16}}>
                 <div style={{fontSize:13,color:"#5F5D58",marginBottom:6}}>カラー</div>
                 <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
-                  {["#E85D04","#C9184A","#E6F1FB","#6D28D9","#16a34a","#d97706","#0891b2","#be185d","#E1F5EE","#7c3aed"].map(c=>(
+                  {["#E85D04","#C9184A","#0077B6","#6D28D9","#16a34a","#d97706","#0891b2","#be185d","#E1F5EE","#7c3aed"].map(c=>(
                     <button key={c} onClick={()=>setCatEditForm(p=>({...p,color:c}))}
                       style={{width:30,height:30,borderRadius:"50%",background:c,
                         border:`3px solid ${catEditForm.color===c?"#fff":"transparent"}`,cursor:"pointer"}}/>
@@ -5036,7 +5036,7 @@ function OpsView({currentUserId, storeFilter, notify, openItems, setOpenItems, c
         </div>
 
         {/* 進捗バー */}
-        <div style={{background:"#FFFFFF",border:`1px solid ${mode==="open"?"#F6CFAF":"#CECBF6"}`,borderRadius:14,padding:"16px 20px",marginBottom:12}}>
+        <div style={{background:"#FFFFFF",border:`1px solid ${mode==="open"?"#F6CFAF":"#4c1d95"}`,borderRadius:14,padding:"16px 20px",marginBottom:12}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
             <span style={{fontSize:14,color:"#5F5D58"}}>進捗</span>
             <div style={{display:"flex",alignItems:"center",gap:12}}>
@@ -5546,7 +5546,7 @@ function LoginScreen({ onLogin, stores, users }) {
             />
             {error && <div style={{color:"#B42318",fontSize:13,textAlign:"center",marginTop:8}}>{error}</div>}
             <button onClick={handleStoreCode}
-              style={{width:"100%",marginTop:16,padding:14,background:storeCode ? "linear-gradient(90deg,#E85D04,#F48C06)" : "#ECE9E1",color:"#fff",border:"none",borderRadius:10,fontSize:15,fontWeight:700,cursor:storeCode ? "pointer" : "default"}}>
+              style={{width:"100%",marginTop:16,padding:14,background:storeCode ? "linear-gradient(90deg,#E85D04,#F48C06)" : "#ECE9E1",color:(storeCode)?"#fff":"#5F5D58",border:"none",borderRadius:10,fontSize:15,fontWeight:700,cursor:storeCode ? "pointer" : "default"}}>
               次へ
             </button>
             <div style={{display:"flex",gap:8,marginTop:14}}>
@@ -5577,7 +5577,7 @@ function LoginScreen({ onLogin, stores, users }) {
             />
             {error && <div style={{color:"#B42318",fontSize:13,textAlign:"center",marginTop:8}}>{error}</div>}
             <button onClick={handleHonbu}
-              style={{width:"100%",marginTop:16,padding:14,background:(email&&password) ? "linear-gradient(90deg,#E85D04,#F48C06)" : "#ECE9E1",color:"#fff",border:"none",borderRadius:10,fontSize:15,fontWeight:700,cursor:(email&&password) ? "pointer" : "default"}}>
+              style={{width:"100%",marginTop:16,padding:14,background:(email&&password) ? "linear-gradient(90deg,#E85D04,#F48C06)" : "#ECE9E1",color:((email&&password))?"#fff":"#5F5D58",border:"none",borderRadius:10,fontSize:15,fontWeight:700,cursor:(email&&password) ? "pointer" : "default"}}>
               ログイン
             </button>
             <button onClick={() => { setStep("store"); setStoreCode(""); setError(""); }}
@@ -5633,7 +5633,7 @@ function LoginScreen({ onLogin, stores, users }) {
             {error && <div style={{color:"#B42318",fontSize:13,textAlign:"center",marginTop:8}}>{error}</div>}
             <button onClick={handlePin}
               disabled={pin.length < 4}
-              style={{width:"100%",marginTop:16,padding:14,background:pin.length === 4 ? "linear-gradient(90deg,#E85D04,#F48C06)" : "#ECE9E1",color:"#fff",border:"none",borderRadius:10,fontSize:15,fontWeight:700,cursor:pin.length === 4 ? "pointer" : "default"}}>
+              style={{width:"100%",marginTop:16,padding:14,background:pin.length === 4 ? "linear-gradient(90deg,#E85D04,#F48C06)" : "#ECE9E1",color:(pin.length === 4)?"#fff":"#5F5D58",border:"none",borderRadius:10,fontSize:15,fontWeight:700,cursor:pin.length === 4 ? "pointer" : "default"}}>
               ログイン
             </button>
             <button onClick={() => { setStep("user"); setPin(""); setError(""); }}
@@ -5885,7 +5885,7 @@ function AIAnalysisView({ inventory, orders, allPrepTasks, cleanTasks, recipes, 
       </div>
 
       <button onClick={analyze} disabled={loading}
-        style={{width:"100%",padding:14,borderRadius:12,border:"none",cursor:loading?"default":"pointer",fontSize:15,fontWeight:800,color:"#2C2C2A",background:loading?"#ECE9E1":"linear-gradient(90deg,#6D28D9,#7c3aed)",marginBottom:16}}>
+        style={{width:"100%",padding:14,borderRadius:12,border:"none",cursor:loading?"default":"pointer",fontSize:15,fontWeight:800,color:(loading)?"#5F5D58":"#fff",background:loading?"#ECE9E1":"linear-gradient(90deg,#6D28D9,#7c3aed)",marginBottom:16}}>
         {loading ? "AIが分析中..." : "AIで分析する"}
       </button>
 
