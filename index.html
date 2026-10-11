@@ -433,6 +433,24 @@ const Bar = ({v,max,color="#E85D04",h=4}) => (
   </div>
 );
 
+// 左メニュー用の線アイコン（外部ライブラリなし）
+const NAV_ICON_PATHS = {
+  home:  ["M3 11l9-7 9 7", "M5 10v10h14V10", "M10 20v-5h4v5"],
+  chart: ["M4 20h16", "M7 17v-6", "M12 17V6", "M17 17v-9"],
+  list:  ["M10 6h10", "M10 12h10", "M10 18h10", "M4 6l1.2 1.2L7.5 5", "M4 12l1.2 1.2 2.3-2.2", "M4 18l1.2 1.2 2.3-2.2"],
+  box:   ["M3.5 7.5L12 3.5l8.5 4v9L12 20.5l-8.5-4z", "M3.5 7.5L12 11.5l8.5-4", "M12 11.5v9"],
+  cart:  ["M3 4h2.2l2.3 10.5h10.8l2-7.5H6.4", "M9 19.5h.01", "M17 19.5h.01"],
+  check: ["M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z", "M8.5 12.5l2.5 2.5 4.5-5"],
+  users: ["M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z", "M2.5 20c.6-3.4 3.2-5.5 6.5-5.5s5.9 2.1 6.5 5.5", "M16 4.5a3.3 3.3 0 0 1 0 6.3", "M18.5 14.8c1.7.8 2.8 2.6 3 5.2"],
+  spark: ["M12 3.5l1.9 5 5 1.9-5 1.9-1.9 5-1.9-5-5-1.9 5-1.9z", "M19 3.5v3", "M17.5 5h3"],
+  card:  ["M3.5 6h17a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-17a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1z", "M2.5 10h19", "M6.5 14.5h4"],
+};
+const NavIcon = ({name, size=22}) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    {(NAV_ICON_PATHS[name]||[]).map((d,i)=><path key={i} d={d}/>)}
+  </svg>
+);
+
 // 背景色の明るさに合わせて、ボタン文字を白/濃い色で自動切替
 const inkOn = (c) => { try { let h=String(c||"").replace("#","").slice(0,6); if(h.length===3) h=h.split("").map(x=>x+x).join(""); if(!/^[0-9a-fA-F]{6}$/.test(h)) return "#fff"; const v=[0,2,4].map(i=>parseInt(h.slice(i,i+2),16)/255); return (0.299*v[0]+0.587*v[1]+0.114*v[2])>0.62 ? "#2C2C2A" : "#fff"; } catch { return "#fff"; } };
 const Btn = ({children,onClick,color="#E85D04",disabled,style={}}) => (
@@ -6225,6 +6243,26 @@ function AppInner() {
   const hiddenTabs = (myRole && myRole!=="本部") ? (roleHide[myRole] || []) : [];
   const visibleTabs = tabs.filter(t=>!hiddenTabs.includes(t.id));
 
+  // 左メニューのまとめ（中の画面は従来どおり。まとめた画面は上の丸タブで切替）
+  const MENU_GROUPS = [
+    {id:"g_top",   label:"今日のやること",     sub:"今日の仕込み・そうじ",       icon:"home",  kids:["top"]},
+    {id:"g_num",   label:"お店の数字",         sub:"状況のまとめ・AI分析",       icon:"chart", kids:["dashboard","ai_analysis"]},
+    {id:"g_prep",  label:"仕込み・そうじ",     sub:"仕込み・そうじ・定例タスク", icon:"list",  kids:["prep","clean","tasks"]},
+    {id:"g_inv",   label:"在庫・棚卸し",       sub:"残り・棚卸し・提出履歴",     icon:"box",   kids:["inventory"]},
+    {id:"g_order", label:"発注",               sub:"業者への発注と検品",         icon:"cart",  kids:["order"]},
+    {id:"g_ops",   label:"開店・閉店チェック", sub:"毎日の開け閉めの確認",       icon:"check", kids:["ops"]},
+    {id:"g_staff", label:"スタッフ",           sub:"メンバー・ログインQR・評価", icon:"users", kids:["staff","staff_qr","commission"]},
+    {id:"g_ai",    label:"AIにおまかせ",       sub:"相談・書類から自動入力",     icon:"spark", kids:["ai_support","ai_input"]},
+    {id:"g_bill",  label:"プラン・請求",       sub:"契約プランとお支払い",       icon:"card",  kids:["billing"]},
+  ];
+  const SUB_LABEL = {dashboard:"まとめ", ai_analysis:"AI分析", prep:"仕込み", clean:"そうじ", tasks:"定例タスク",
+    staff:"メンバー", staff_qr:"ログインQR", commission:"評価・コミッション", ai_support:"AIに相談", ai_input:"書類から自動入力"};
+  const visibleIds = visibleTabs.map(t=>t.id);
+  const visibleGroups = MENU_GROUPS
+    .map(g=>({...g, kids:g.kids.filter(id=>visibleIds.includes(id))}))
+    .filter(g=>g.kids.length>0);
+  const activeGroup = visibleGroups.find(g=>g.kids.includes(view));
+
   const getBadge = id => {
     if (id==="inventory" && lowStockCount>0) return lowStockCount;
     if (id==="order" && (pendingOrderCount>0||lowStockCount>0)) return pendingOrderCount+lowStockCount;
@@ -6458,23 +6496,28 @@ function AppInner() {
         {/* Sidebar */}
         <div style={isMobile ? {
             position:"fixed",left:0,top:56,height:"calc(100vh - 56px)",zIndex:160,
-            width:sideOpen?220:0,borderRight:sideOpen?"1px solid #E4E0D6":"none",
+            width:sideOpen?290:0,borderRight:sideOpen?"1px solid #EDE7DD":"none",
             padding:sideOpen?"14px 0":0,overflowY:sideOpen?"auto":"hidden",overflowX:"hidden",
-            background:"#F7F5F0",transition:"width .25s ease",boxShadow:sideOpen?"4px 0 28px #000b":"none"
+            background:"#FFFFFF",transition:"width .25s ease",boxShadow:sideOpen?"4px 0 28px rgba(40,36,30,.18)":"none"
           } : {
-            width:sideOpen?190:0,minWidth:sideOpen?190:0,borderRight:sideOpen?"1px solid #E4E0D6":"none",
+            width:sideOpen?272:0,minWidth:sideOpen?272:0,borderRight:sideOpen?"1px solid #EDE7DD":"none",
             padding:sideOpen?"14px 0":0,overflowY:sideOpen?"auto":"hidden",overflowX:"hidden",
-            background:"#F7F5F0",flexShrink:0,transition:"width .25s ease"
+            background:"#FFFFFF",flexShrink:0,transition:"width .25s ease"
           }}>
-          {visibleTabs.map(t=>{
-            const badge = getBadge(t.id);
+          {visibleGroups.map(g=>{
+            const active = g.id===activeGroup?.id;
+            const badge = g.kids.reduce((n,id)=>n+(getBadge(id)||0),0);
             return (
-              <button key={t.id} onClick={()=>{setView(t.id); if(window.innerWidth<900)setSideOpen(false);}}
-                style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:t.id==="ai_support"?"10px 18px 10px 15px":"10px 18px",background:t.id==="ai_support"?(view===t.id?"#FDF0E6":"rgba(232,93,4,.08)"):view===t.id?"#F4F2EC":"transparent",border:"none",cursor:"pointer",color:t.id==="ai_support"?(view===t.id?"#FAA307":"#E85D04"):(view===t.id?"#2C2C2A":"#5F5D58"),borderLeft:`3px solid ${t.id==="ai_support"?(view===t.id?"#FAA307":"#E85D0488"):view===t.id?"#E85D04":"transparent"}`,fontSize:13,textAlign:"left",marginTop:t.id==="ai_support"?"auto":"0"}}>
-                <span style={{display:"flex",alignItems:"center",gap:8}}>
-                  {t.label}
+              <button key={g.id} onClick={()=>{ if(!active) setView(g.kids[0]); if(window.innerWidth<900)setSideOpen(false);}}
+                style={{width:"calc(100% - 24px)",margin:"0 12px 6px",display:"flex",alignItems:"center",gap:14,padding:"10px 12px",background:active?"#E8792F":"transparent",border:"none",borderRadius:16,cursor:"pointer",textAlign:"left",boxShadow:active?"0 4px 14px rgba(232,121,47,.28)":"none",transition:"background .15s"}}>
+                <span style={{width:44,height:44,flexShrink:0,borderRadius:13,display:"flex",alignItems:"center",justifyContent:"center",background:active?"rgba(255,255,255,.22)":"#FDF0E6",color:active?"#fff":"#D9661C"}}>
+                  <NavIcon name={g.icon}/>
                 </span>
-                {badge != null && <span style={{background:"#ef4444",color:"#fff",fontSize:11,fontWeight:700,borderRadius:10,padding:"1px 6px"}}>{badge}</span>}
+                <span style={{flex:1,minWidth:0}}>
+                  <span style={{display:"block",fontSize:16,fontWeight:800,color:active?"#fff":"#2C2C2A",lineHeight:1.35}}>{g.label}</span>
+                  <span style={{display:"block",fontSize:12,color:active?"#FFF1E6":"#7A776F",lineHeight:1.4,marginTop:2}}>{g.sub}</span>
+                </span>
+                {badge>0 && <span style={{minWidth:26,height:26,padding:"0 7px",borderRadius:13,background:active?"#fff":"#E8792F",color:active?"#D9661C":"#fff",fontSize:13,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{badge}</span>}
               </button>
             );
           })}
@@ -6524,12 +6567,12 @@ function AppInner() {
               </div>
             );
             return (
-              <div style={{borderTop:"1px solid #E4E0D6",marginTop:10,paddingTop:10}}>
-                <div style={{fontSize:11,color:"#6E6C66",padding:"0 10px 6px",letterSpacing:".05em"}}>＋ タスクを追加（TOP）</div>
+              <div style={{borderTop:"1px solid #EDE7DD",margin:"12px 12px 0",paddingTop:12}}>
+                <div style={{fontSize:13,fontWeight:700,color:"#5F5D58",padding:"0 10px 8px"}}>＋ 今日のやることに追加</div>
                 <Sec skey="prep"   label="🔪 仕込み"   color="#E85D04" items={prepItems}/>
                 <Sec skey="clean"  label="✦ クリーン"  color="#C9184A" items={cleanItems}/>
                 <Sec skey="custom" label="＋ カスタム" color="#0077B6" items={customItems}/>
-                <div style={{fontSize:11,color:"#5a6472",padding:"6px 10px 0",lineHeight:1.5}}>※ クリーンは「クリーン管理」で作った項目が並びます。新しい項目はカスタムから追加できます。</div>
+                <div style={{fontSize:11,color:"#5a6472",padding:"6px 10px 0",lineHeight:1.5}}>※ そうじは「仕込み・そうじ」→「そうじ」で作った項目が並びます。新しい項目はカスタムから追加できます。</div>
               </div>
             );
           })()}
@@ -6537,8 +6580,23 @@ function AppInner() {
         </div>
 
         {/* Main content */}
-        <div style={{flex:1,padding:"24px 28px",overflowY:"auto"}}>
-          {view==="top"       && <TopView allPrepTasks={allPrepTasks} setAllPrepTasks={setAllPrepTasks} cleanTasks={cleanTasks} setCleanTasks={setCleanTasks} inventory={inventory} setInventory={setInventory} recipes={recipes} currentUserId={currentUserId} notify={notify} storeFilter={storeFilter} routines={routines} paletteDrag={paletteDrag} setPaletteDrag={setPaletteDrag} extDragTask={topDragTask} setExtDragTask={setTopDragTask} extDragOver={topDragOver} setExtDragOver={setTopDragOver} onDayChange={setTopActiveDay} onStoreChange={setTopActiveStore}/>}
+        <div style={{flex:1,padding:isMobile?"18px 14px":"24px 28px",overflowY:"auto"}}>
+          {activeGroup && activeGroup.kids.length>1 && (
+            <div style={{display:"flex",flexWrap:"wrap",gap:10,marginBottom:20}}>
+              {activeGroup.kids.map(id=>{
+                const on = id===view;
+                return (
+                  <button key={id} onClick={()=>setView(id)}
+                    style={{padding:"10px 22px",borderRadius:999,fontSize:15,fontWeight:800,cursor:"pointer",
+                      background:on?"#E8792F":"#FFFFFF",color:on?"#fff":"#2C2C2A",
+                      border:on?"2px solid #E8792F":"2px solid #EDE3D6",boxShadow:on?"0 0 0 4px #FBE3D2":"none"}}>
+                    {SUB_LABEL[id] || id}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {view==="top"       &&<TopView allPrepTasks={allPrepTasks} setAllPrepTasks={setAllPrepTasks} cleanTasks={cleanTasks} setCleanTasks={setCleanTasks} inventory={inventory} setInventory={setInventory} recipes={recipes} currentUserId={currentUserId} notify={notify} storeFilter={storeFilter} routines={routines} paletteDrag={paletteDrag} setPaletteDrag={setPaletteDrag} extDragTask={topDragTask} setExtDragTask={setTopDragTask} extDragOver={topDragOver} setExtDragOver={setTopDragOver} onDayChange={setTopActiveDay} onStoreChange={setTopActiveStore}/>}
           {view==="dashboard" && <Dashboard allPrepTasks={allPrepTasks} cleanTasks={cleanTasks} hqTasks={hqTasks} setHqTasks={setHqTasks} currentUserId={currentUserId} inventory={inventory} orders={orders} storeFilter={storeFilter} notify={notify}/>}
           {view==="prep"      && <PrepView allTasks={allPrepTasks} setAllTasks={setAllPrepTasks} currentUserId={currentUserId} recipes={recipes} notify={notify} setInventory={setInventory} storeFilter={storeFilter}/>}
           {view==="clean"     && <CleanView tasks={cleanTasks} setTasks={setCleanTasks} currentUserId={currentUserId} notify={notify} storeFilter={storeFilter}/>}
