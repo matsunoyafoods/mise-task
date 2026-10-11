@@ -512,6 +512,10 @@ function SwitchUserModal({users, onSwitch, onClose}) {
 // 現場スタッフ（メニューを最小限にする役割）か
 const myRoleIsFrontStaff = (role) => role==="スタッフ" || role==="アルバイト";
 
+// 業者さん・スタッフに渡すURLは、どこから発行しても本番の公開アドレスにする
+//   （確認用のプレビューURLは関係者のみ閲覧可でVercelのログインに飛ばされるため）
+const PUBLIC_ORIGIN = (window.MISE_TASK_CONFIG && window.MISE_TASK_CONFIG.PUBLIC_URL) || "https://mise-task.vercel.app";
+
 // 左メニュー用の線アイコン（外部ライブラリなし）
 const NAV_ICON_PATHS = {
   home:  ["M3 11l9-7 9 7", "M5 10v10h14V10", "M10 20v-5h4v5"],
@@ -908,7 +912,7 @@ function IssueSupplierModal({onClose, setSuppliers, notify}) {
   const [copied, setCopied] = useState(false);
 
   // 業者登録ページのURL（今開いているサイトの supplier-reg.html。業者名も付けて渡す）
-  const regUrl = token ? window.location.origin+"/supplier-reg.html?token="+encodeURIComponent(token)+"&name="+encodeURIComponent(name.trim()) : "";
+  const regUrl = token ? PUBLIC_ORIGIN+"/supplier-reg.html?token="+encodeURIComponent(token)+"&name="+encodeURIComponent(name.trim()) : "";
 
   const issue = () => {
     if (!name.trim()) { notify("業者名を入力してください","warn"); return; }
@@ -1033,7 +1037,7 @@ function SupplierWizard({mode, suppliers, setSuppliers, inventory, setInventory,
     if (step==="share" && sup && !sup.token) { const t=newToken(); setSuppliers(p=>p.map(x=>x.id===sup.id?{...x,token:t}:x)); }
   }, [step, sup?.id, sup?.token]);
   const tok = sup?.token;
-  const regUrl = (sup && tok) ? window.location.origin+"/supplier-reg.html?token="+encodeURIComponent(tok)+"&name="+encodeURIComponent(sup.name||"") : "";
+  const regUrl = (sup && tok) ? PUBLIC_ORIGIN+"/supplier-reg.html?token="+encodeURIComponent(tok)+"&name="+encodeURIComponent(sup.name||"") : "";
   const saveItems = () => {
     if (!sup) return onClose();
     setInventory(p=>p.map(i=>{
@@ -5641,7 +5645,7 @@ function StaffQRView({ storeFilter, stores, notify, issueToken=null }) {
   // QR描画
   useEffect(() => {
     if (!info || !qrRef.current || typeof QRCode === "undefined") return;
-    const url = `${location.origin}${location.pathname}?qr=${encodeURIComponent(info.qrToken)}`;
+    const url = `${PUBLIC_ORIGIN}/?qr=${encodeURIComponent(info.qrToken)}`;
     qrRef.current.innerHTML = "";
     new QRCode(qrRef.current, { text: url, width: 260, height: 260, colorDark: "#000000", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
   }, [info]);
