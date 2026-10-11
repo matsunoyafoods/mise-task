@@ -830,7 +830,8 @@ function IssueSupplierModal({onClose, setSuppliers, notify}) {
   const [token, setToken] = useState(null);
   const [copied, setCopied] = useState(false);
 
-  const regUrl = token ? "https://mise-task.app/supplier-reg?token="+token : "";
+  // 業者登録ページのURL（今開いているサイトの supplier-reg.html。業者名も付けて渡す）
+  const regUrl = token ? window.location.origin+"/supplier-reg.html?token="+encodeURIComponent(token)+"&name="+encodeURIComponent(name.trim()) : "";
 
   const issue = () => {
     if (!name.trim()) { notify("業者名を入力してください","warn"); return; }

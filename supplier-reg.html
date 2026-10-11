@@ -158,13 +158,10 @@ function SupplierRegPage() {
   // API接続時: トークンから業者情報を取得
   useEffect(() => {
     if (token && !supplierLoaded) {
-      api.suppliers.getByToken(token).then(data => {
-        if (data?.name) set("companyName", data.name);
-        setSupplierLoaded(true);
-      }).catch(() => {
-        setLoadError("業者トークンの読み込みに失敗しました");
-        setSupplierLoaded(true);
-      });
+      // URLに業者名が付いていれば先に入れておく（サーバーに業者名を問い合わせる口は未実装のため）
+      const urlName = new URLSearchParams(window.location.search).get("name");
+      if (urlName) set("companyName", urlName);
+      setSupplierLoaded(true);
     }
   }, [token, supplierLoaded]);
 
