@@ -512,6 +512,22 @@ function SwitchUserModal({users, onSwitch, onClose}) {
 // 現場スタッフ（メニューを最小限にする役割）か
 const myRoleIsFrontStaff = (role) => role==="スタッフ" || role==="アルバイト";
 
+// 業者さんが登録ページで入れた項目（companyName / methods / email）を、お店の画面が使う項目
+// （name / orderMethods・sendMethod / contact）にそろえる。そろえた後は元の項目を消すので、
+// お店側で後から編集した内容が上書きされることはない（業者さんが登録し直したときだけ反映）
+const normalizeSupplier = (sp) => {
+  if (!sp || typeof sp !== "object") return sp;
+  const o = {...sp};
+  if (o.companyName && String(o.companyName).trim()) { o.name = String(o.companyName).trim(); }
+  delete o.companyName;
+  if (Array.isArray(o.methods) && o.methods.length) { o.orderMethods = o.methods; o.sendMethod = o.methods[0]; }
+  delete o.methods;
+  if (o.email && String(o.email).trim()) { o.contact = String(o.email).trim(); }
+  delete o.email;
+  return o;
+};
+const normalizeSuppliers = (list) => Array.isArray(list) ? list.map(normalizeSupplier) : [];
+
 // 業者さん・スタッフに渡すURLは、どこから発行しても本番の公開アドレスにする
 //   （確認用のプレビューURLは関係者のみ閲覧可でVercelのログインに飛ばされるため）
 const PUBLIC_ORIGIN = (window.MISE_TASK_CONFIG && window.MISE_TASK_CONFIG.PUBLIC_URL) || "https://mise-task.vercel.app";
@@ -6366,7 +6382,7 @@ function AppInner() {
     INITIAL_PRICE_HISTORY = data?.priceHistory || [];
     setStores(data?.stores || []);
     setUsers(data?.users || []);
-    setSuppliers(data?.suppliers || []);
+    setSuppliers(normalizeSuppliers(data?.suppliers || []));
     setInventory(data?.inventory || []);
     setPriceHistory(data?.priceHistory || []);
     setOrders(data?.orders || []);
@@ -6393,7 +6409,7 @@ function AppInner() {
       closeItems:setCloseItems, taskCats:setTaskCats, hqTasks:setHqTasks,
     };
     const s = setters[resource];
-    if (s) s(serverData ?? []);
+    if (s) s(resource==="suppliers" ? normalizeSuppliers(serverData ?? []) : (serverData ?? []));
   };
 
   const loadAppData = async () => {
