@@ -107,6 +107,9 @@ const api = {
     setCredentials: (userId, email, password) => api._fetch(`/users/set-credentials`, { method: "POST", body: JSON.stringify({ userId, email, password }) }),
     // 店舗タブレットが短命QRを発行（要ログイン: 店長/本部） → {qrToken, expiresAt}
     issueQr: (storeId) => api._fetch(`/qr/issue`, { method: "POST", body: JSON.stringify({ storeId }) }),
+    // お店アカウント端末では、だれに切り替えていてもお店アカウントの権限でQRを発行する
+    issueQrWith: (storeId, token) => api._fetch(`/qr/issue`, { method: "POST", body: JSON.stringify({ storeId }),
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + token } }),
     // スタッフ携帯がQRトークンでログイン（公開） → {storeId, storeName, tenantId, users}
     loginByQr: (qrToken) => api._fetch(`/qr/login`, { method: "POST", body: JSON.stringify({ qrToken }) }),
   },
@@ -519,6 +522,7 @@ const NAV_ICON_PATHS = {
   check: ["M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z", "M8.5 12.5l2.5 2.5 4.5-5"],
   users: ["M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z", "M2.5 20c.6-3.4 3.2-5.5 6.5-5.5s5.9 2.1 6.5 5.5", "M16 4.5a3.3 3.3 0 0 1 0 6.3", "M18.5 14.8c1.7.8 2.8 2.6 3 5.2"],
   spark: ["M12 3.5l1.9 5 5 1.9-5 1.9-1.9 5-1.9-5-5-1.9 5-1.9z", "M19 3.5v3", "M17.5 5h3"],
+  qr:    ["M4 4h6v6H4z", "M14 4h6v6h-6z", "M4 14h6v6H4z", "M14 14h2v2h-2z", "M18 14h2", "M14 18h2v2", "M18 18h2v2h-2"],
   card:  ["M3.5 6h17a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-17a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1z", "M2.5 10h19", "M6.5 14.5h4"],
 };
 const NavIcon = ({name, size=22}) => (
@@ -5441,7 +5445,7 @@ function PwChangeForm({verifyHonbuPassword, updateAdminPassword, onClose, notify
 // ═══════════════════════════════════════════════════════════════════════
 // ██  STAFF QR — 店舗タブレットで毎回新しい時限QRを生成して表示
 // ═══════════════════════════════════════════════════════════════════════
-function StaffQRView({ storeFilter, stores, notify }) {
+function StaffQRView({ storeFilter, stores, notify, issueToken=null }) {
   const qrRef = useRef(null);
   const [info, setInfo] = useState(null);   // {qrToken, expiresAt(秒)}
   const [err, setErr] = useState("");
@@ -5452,8 +5456,11 @@ function StaffQRView({ storeFilter, stores, notify }) {
     // 店舗未選択（本部=全店舗）では発行APIを呼ばず、店舗選択を促す（400回避）
     if (!storeId) { setInfo(null); setErr("店舗を選んでください（右上の店舗切替で対象店舗を選ぶと、その店舗のQRを発行します）"); return; }
     setErr("");
-    try { setInfo(await api.auth.issueQr(storeId)); }
-    catch (e) { setErr(e.message || "QRの発行に失敗しました"); setInfo(null); }
+    try { setInfo(issueToken ? await api.auth.issueQrWith(storeId, issueToken) : await api.auth.issueQr(storeId)); }
+    catch (e) {
+      setErr(e.status===403 ? "ログインQRは、お店のタブレット（店長のメールでログインした端末）で表示してください。" : (e.message || "QRの発行に失敗しました"));
+      setInfo(null);
+    }
   };
 
   // 初回＋80秒ごとに自動再発行（トークンは90秒で失効）。店舗未選択時はタイマーを張らない
@@ -6396,10 +6403,10 @@ function AppInner() {
 
   // ロール別メニュー表示（見た目の整理。サーバー側の権限は従来どおり）
   //   本部・店長=全部 / 管理スタッフ=プラン・スタッフ関係以外 / スタッフ・アルバイト=今日のやること＋開店・閉店チェックのみ
-  const STAFF_ONLY = ["top","ops","inspect"];
+  const STAFF_ONLY = ["top","ops","inspect","staff_qr"];
   const roleHide = {
     "店長":       [],
-    "管理スタッフ": ["billing","staff","staff_qr","commission"],
+    "管理スタッフ": ["billing","staff","commission"],
     "スタッフ":     tabs.map(t=>t.id).filter(id=>!STAFF_ONLY.includes(id)),
     "アルバイト":   tabs.map(t=>t.id).filter(id=>!STAFF_ONLY.includes(id)),
   };
@@ -6419,7 +6426,8 @@ function AppInner() {
     {id:"g_order", label:"発注",               sub:"業者への発注と検品",         icon:"cart",  kids:["order"]},
     {id:"g_ops",   label:"開店・閉店チェック", sub:"毎日の開け閉めの確認",       icon:"check", kids:["ops"]},
     {id:"g_insp",  label:"検品",               sub:"届いた荷物の数を確かめる",   icon:"box",   kids:["inspect"]},
-    {id:"g_staff", label:"スタッフ",           sub:"メンバー・ログインQR・評価", icon:"users", kids:["staff","staff_qr","commission"]},
+    {id:"g_qr",    label:"ログインQR",         sub:"スタッフのスマホでログイン", icon:"qr",    kids:["staff_qr"]},
+    {id:"g_staff", label:"スタッフ",           sub:"メンバー・評価",             icon:"users", kids:["staff","commission"]},
     {id:"g_ai",    label:"AIにおまかせ",       sub:"相談・書類から自動入力",     icon:"spark", kids:["ai_support","ai_input"]},
     {id:"g_bill",  label:"プラン・請求",       sub:"契約プランとお支払い",       icon:"card",  kids:["billing"]},
   ];
@@ -6821,7 +6829,7 @@ function AppInner() {
           {view==="billing"    && <BillingView notify={notify}/>}
           {view==="ai_support" && <AISupportView/>}
           {view==="staff"      && <StaffView users={users} setUsers={setUsers} stores={stores} setStores={setStores} storeFilter={storeFilter} notify={notify} resetAllData={resetAllData}/>}
-          {view==="staff_qr"   && <StaffQRView storeFilter={storeFilter} stores={stores} notify={notify}/>}
+          {view==="staff_qr"   && <StaffQRView storeFilter={storeFilter} stores={stores} notify={notify} issueToken={storeMode ? storeBaseRef.current?.token : null}/>}
         </div>
       </div>
     </div>
