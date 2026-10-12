@@ -1009,7 +1009,18 @@ function IssueSupplierModal({onClose, setSuppliers, notify}) {
 }
 
 // ─── 業者を追加／編集／URL共有／商品ひも付け（お店側の一連の流れ）───
-function SupplierWizard({mode, suppliers, setSuppliers, inventory, setInventory, storeFilter, notify, onClose}) {
+// LINEグループ登録コード（MT-4けた）。ほかの業者と重ならないものを作る
+function makeLineCode(suppliers) {
+  const used = new Set((suppliers||[]).map(x=>x.lineCode).filter(Boolean));
+  let c; do { c = "MT-"+String(Math.floor(1000+Math.random()*9000)); } while (used.has(c));
+  return c;
+}
+function copyToClipboard(text, notify, okMsg) {
+  try { navigator.clipboard.writeText(text).then(()=>notify(okMsg||"✓ コピーしました"), ()=>notify("コピーできませんでした","warn")); }
+  catch { notify("コピーできませんでした","warn"); }
+}
+
+function SupplierWizard({mode, suppliers, setSuppliers, inventory, setInventory, storeFilter, notify, onClose, refreshSuppliers}) {
   const initSup = mode.sup || null;
   const [step, setStep] = useState(mode.type==="new" ? "choose" : mode.type==="edit" ? "manual" : mode.type==="share" ? "share" : mode.type==="line" ? "line" : "items");
   const [supId, setSupId] = useState(initSup?.id || null);
@@ -1059,8 +1070,7 @@ function SupplierWizard({mode, suppliers, setSuppliers, inventory, setInventory,
   // LINEグループ登録コード（MT-4けた）。無ければ作って保存
   useEffect(() => {
     if (step==="line" && sup && !sup.lineCode) {
-      const used = new Set((suppliers||[]).map(x=>x.lineCode).filter(Boolean));
-      let c; do { c = "MT-"+String(Math.floor(1000+Math.random()*9000)); } while (used.has(c));
+      const c = makeLineCode(suppliers);
       setSuppliers(p=>p.map(x=>x.id===sup.id?{...x,lineCode:c}:x));
     }
   }, [step, sup?.id, sup?.lineCode]);
@@ -1162,10 +1172,12 @@ function SupplierWizard({mode, suppliers, setSuppliers, inventory, setInventory,
           </ol>
           <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:12,background:"#FBFAF7",border:"2px dashed #E8792F",borderRadius:14,padding:"16px",marginBottom:10}}>
             <span style={{fontSize:28,fontWeight:800,letterSpacing:".08em",color:"#2C2C2A"}}>{sup.lineCode || "作成中…"}</span>
-            {sup.lineCode && <button onClick={()=>{ try{ navigator.clipboard.writeText(sup.lineCode).then(()=>notify("✓ コードをコピーしました")); }catch{} }}
+            {sup.lineCode && <button onClick={()=>copyToClipboard(sup.lineCode, notify, "✓ コードをコピーしました")}
               style={{padding:"8px 14px",background:"#E8792F",color:"#fff",border:"none",borderRadius:999,fontSize:14,fontWeight:800,cursor:"pointer"}}>コピー</button>}
           </div>
-          <div style={{fontSize:13,color:"#5F5D58",lineHeight:1.7,marginBottom:14}}>botが「登録しました」と返事をすれば完了です。この画面は、アプリを開き直すと「✓ 登録済み」に変わります。<br/>送信数のお知らせを受けたいグループ（店長だけのグループなど）では「通知先に設定」と送ってください。</div>
+          <div style={{fontSize:13,color:"#5F5D58",lineHeight:1.7,marginBottom:10}}>botが「登録しました」と返事をすれば完了です。返事が来たら下の「登録できたか確認」を押してください。<br/>送信数のお知らせを受けたいグループ（店長だけのグループなど）では「通知先に設定」と送ってください。</div>
+          {!lineLinked && refreshSuppliers && <Btn onClick={async()=>{ const list = await refreshSuppliers(); const s2 = (list||[]).find(x=>x.id===sup.id); notify(s2?.lineGroups?.[String(storeFilter)] ? "✓ 登録できています" : "まだ登録されていません。グループにコードを送ってから、もう一度押してください", s2?.lineGroups?.[String(storeFilter)] ? undefined : "warn"); }}
+            color="#06C755" style={{width:"100%",padding:"12px",marginBottom:10,fontSize:15}}>🔄 登録できたか確認</Btn>}
         </>)}
         <Btn onClick={onClose} color="#ECE9E1" style={{width:"100%",padding:"12px"}}>閉じる</Btn>
       </div>)}
@@ -3109,10 +3121,27 @@ function DemandSettingsModal({ config, onSave, onClose }) {
   );
 }
 
-function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSuppliers, orders, setOrders, priceHistory, setPriceHistory, currentUserId, notify, storeFilter, demandConfig, setDemandConfig}) {
+function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSuppliers, orders, setOrders, priceHistory, setPriceHistory, currentUserId, notify, storeFilter, demandConfig, setDemandConfig, refreshSuppliers}) {
   const [confirmOrder, setConfirmOrder] = useState(null);
   const [sentInfo, setSentInfo] = useState(null); // 発注を記録した後の「送る」画面 {sup, links, text}
   const [tab, setTab] = useState("candidates");
+  const [lineQuota, setLineQuota] = useState(null); // {configured, quota:{limit,used}}
+  // 業者一覧を開いたとき: 最新の業者（グループ登録の状態）と今月のLINE送信数を取り直す
+  useEffect(() => {
+    if (tab!=="suppliers") return;
+    if (refreshSuppliers) refreshSuppliers();
+    if (storeFilter!=null) api.auth.lineQuota(storeFilter).then(setLineQuota).catch(()=>setLineQuota(null));
+    else setLineQuota(null);
+  }, [tab, storeFilter]);
+  // 送る画面を開いたとき: 画面が古くてもグループ登録済みを見逃さないよう、最新を確認
+  useEffect(() => {
+    if (!sentInfo || sentInfo.checked || sentInfo.storeId==null || !refreshSuppliers) return;
+    if (sentInfo.sup?.lineGroups?.[String(sentInfo.storeId)]) { setSentInfo(p=>p&&({...p,checked:true})); return; }
+    refreshSuppliers().then(list => {
+      const fresh = (list||[]).find(x=>x.id===sentInfo.sup.id);
+      setSentInfo(p => p && ({...p, checked:true, sup: fresh ? {...p.sup, lineGroups: fresh.lineGroups} : p.sup}));
+    });
+  }, [sentInfo?.sup?.id, sentInfo?.checked]);
   const [selectedItems, setSelectedItems] = useState({});
   const [editQty, setEditQty] = useState({});
   const [inspectOrder, setInspectOrder] = useState(null);
@@ -3237,15 +3266,16 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
     <div>
       {sentInfo && (()=>{
         const {sup, items, text, storeId, botState} = sentInfo;
-        // 登録コードを出した業者は、画面を開き直していなくてもbot送信を試せる（サーバー側で登録済みか判定）
-        const linkedGroup = storeId!=null && (sup.lineGroups?.[String(storeId)] || sup.lineCode);
+        // その業者のグループが登録済みのときだけ「botで送る」。未登録なら今までどおり手動で送る
+        const linkedGroup = storeId!=null && !!sup.lineGroups?.[String(storeId)];
         const sendByBot = async () => {
           setSentInfo(p=>({...p, botState:"sending"}));
           try {
             const r = await api.auth.lineSend(storeId, sup.id, text);
             const q = r?.quota;
-            const warn = q?.limit ? (q.used/q.limit >= 0.8 ? `（今月 ${q.used}/${q.limit} 通）` : "") : "";
-            notify(`✓ ${sup.name}さんのLINEグループに送りました${warn}`);
+            if (q) setLineQuota({configured:true, quota:q});
+            const cnt = q?.limit ? `（今月 ${q.used}/${q.limit} 通）` : "";
+            notify(`✓ ${sup.name}さんのLINEグループに送りました${cnt}`, q?.limit && q.used/q.limit>=0.8 ? "warn" : undefined);
             setSentInfo(null);
           } catch (e) {
             const code = e?.payload?.error?.code;
@@ -3543,6 +3573,21 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
             style={{width:"100%",padding:"16px",marginBottom:14,background:"#E8792F",border:"none",borderRadius:16,color:"#fff",fontSize:16,fontWeight:800,cursor:"pointer"}}>
             ＋ 業者を追加
           </button>
+          {storeFilter!=null && lineQuota && (
+            lineQuota.configured===false
+              ? <div style={{background:"#FBFAF7",border:"1px solid #EDE7DD",borderRadius:14,padding:"12px 16px",marginBottom:14,fontSize:14,color:"#5F5D58"}}>💬 この店舗のLINE発注botは、まだ設定されていません。</div>
+              : (()=>{ const q=lineQuota.quota; const lim=q?.limit; const used=q?.used??0; const pct=lim?Math.min(100,Math.round(used/lim*100)):0; const col=pct>=100?"#B42318":pct>=80?"#C2410C":"#06C755";
+                  return (
+                    <div style={{background:"#FFFFFF",border:"1px solid #E4E0D6",borderRadius:14,padding:"12px 16px",marginBottom:14}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:10,marginBottom:lim?8:0}}>
+                        <span style={{fontSize:14,fontWeight:700,color:"#2C2C2A"}}>💬 今月のLINE送信数（bot）</span>
+                        <span style={{fontSize:16,fontWeight:800,color:col}}>{q ? (lim ? `${used} / ${lim} 通` : `${used} 通（上限なし）`) : "取得できませんでした"}</span>
+                      </div>
+                      {lim ? <div style={{height:8,background:"#ECE9E1",borderRadius:99,overflow:"hidden"}}><div style={{width:pct+"%",height:"100%",background:col}}/></div> : null}
+                      {lim && pct>=80 ? <div style={{fontSize:13,color:col,marginTop:6}}>{pct>=100?"上限に達しました。今月は手動のLINE送信になります。":"上限が近づいています。"}</div> : null}
+                    </div>);
+                })()
+          )}
           {suppliers.length===0 && <div style={{background:"#FFFFFF",border:"1px solid #EDE7DD",borderRadius:14,padding:20,textAlign:"center",color:"#5F5D58",fontSize:14}}>まだ業者がいません。上のボタンから追加してください。</div>}
           {suppliers.map(sup=>{
             const itemCount = inventory.filter(i=>i.supplierId===sup.id && (!storeFilter || String(i.storeId)===String(storeFilter))).length;
@@ -3559,6 +3604,27 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
                       {sup.fax && <Chip label={`FAX: ${sup.fax}`} color="#5F5D58" bg="#ECE9E1"/>}
                       {sup.tel && <Chip label={`TEL: ${sup.tel}`} color="#5F5D58" bg="#ECE9E1"/>}
                     </div>
+                    {(()=>{ // LINEグループ: 登録状態と登録コード
+                      const linkedStores = Object.keys(sup.lineGroups||{});
+                      const linked = storeFilter!=null ? !!sup.lineGroups?.[String(storeFilter)] : linkedStores.length>0;
+                      const storeLabel = storeFilter!=null ? "" : linkedStores.map(id=>(INITIAL_STORES||[]).find(s=>String(s.id)===id)?.name||("店舗"+id)).join("・");
+                      return (
+                        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginTop:10,fontSize:13}}>
+                          <span style={{fontWeight:700,color:"#45433F"}}>💬 LINEグループ:</span>
+                          {linked
+                            ? <span style={{color:"#2F7A1F",background:"#EAF3DE",padding:"2px 8px",borderRadius:20,fontWeight:700}}>✓ 登録済み{storeLabel?"（"+storeLabel+"）":""}</span>
+                            : <span style={{color:"#A16207",background:"#FDF3DF",padding:"2px 8px",borderRadius:20,fontWeight:700}}>未登録</span>}
+                          {sup.lineCode
+                            ? <>
+                                <span style={{fontWeight:800,letterSpacing:".06em",color:"#2C2C2A",background:"#FBFAF7",border:"1px dashed #E8792F",padding:"2px 8px",borderRadius:8}}>{sup.lineCode}</span>
+                                <button onClick={()=>copyToClipboard(sup.lineCode, notify, "✓ 登録コードをコピーしました")}
+                                  style={{padding:"3px 10px",background:"#E8792F",color:"#fff",border:"none",borderRadius:999,fontSize:12,fontWeight:800,cursor:"pointer"}}>コピー</button>
+                              </>
+                            : <button onClick={()=>{ const c=makeLineCode(suppliers); setSuppliers(p=>p.map(x=>x.id===sup.id?{...x,lineCode:c}:x)); notify("✓ 登録コード "+c+" を発行しました"); }}
+                                style={{padding:"3px 10px",background:"#FFFFFF",color:"#C2410C",border:"1px solid #F6CFAF",borderRadius:999,fontSize:12,fontWeight:800,cursor:"pointer"}}>登録コードを発行</button>}
+                        </div>
+                      );
+                    })()}
                   </div>
                   <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
                     {sup.selfRegistered
@@ -3602,7 +3668,7 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
       {showDemand && <DemandSettingsModal config={demandConfig} onClose={()=>setShowDemand(false)} onSave={(d)=>{ setDemandConfig && setDemandConfig(d); notify("✓ 需要設定を保存しました"); }}/>}
 
       {showSupplierForm && <IssueSupplierModal onClose={()=>setShowSupplierForm(false)} setSuppliers={setSuppliers} notify={notify}/>}
-      {supWizard && <SupplierWizard mode={supWizard} suppliers={suppliers} setSuppliers={setSuppliers} inventory={inventory} setInventory={setInventory} storeFilter={storeFilter} notify={notify} onClose={()=>setSupWizard(null)}/>}
+      {supWizard && <SupplierWizard mode={supWizard} suppliers={suppliers} setSuppliers={setSuppliers} inventory={inventory} setInventory={setInventory} storeFilter={storeFilter} notify={notify} onClose={()=>setSupWizard(null)} refreshSuppliers={refreshSuppliers}/>}
 
       {showSupplierReg && (
         <SupplierSelfRegModal token={showSupplierReg} suppliers={suppliers} setSuppliers={setSuppliers}
@@ -6470,6 +6536,17 @@ function AppInner() {
     if (s) s(resource==="suppliers" ? normalizeSuppliers(serverData ?? []) : (serverData ?? []));
   };
 
+  // 業者だけサーバーの最新を取り直す（LINEグループの登録はサーバー側で書き込まれるため）
+  const refreshSuppliers = async () => {
+    try {
+      const d = await api.app.bootstrap();
+      const list = normalizeSuppliers(d?.suppliers || []);
+      if (d?.versions?.suppliers) versionsRef.current.suppliers = d.versions.suppliers;
+      setSuppliers(prev => JSON.stringify(prev)===JSON.stringify(list) ? prev : list); // 変化がなければ保存も起きない
+      return list;
+    } catch (e) { console.error("refreshSuppliers", e); return null; }
+  };
+
   const loadAppData = async () => {
     setIsBootstrapping(true);
     setBootstrapError("");
@@ -7065,8 +7142,8 @@ function AppInner() {
           {view==="prep"      && <PrepView allTasks={allPrepTasks} setAllTasks={setAllPrepTasks} currentUserId={currentUserId} recipes={recipes} notify={notify} setInventory={setInventory} storeFilter={storeFilter}/>}
           {view==="clean"     && <CleanView tasks={cleanTasks} setTasks={setCleanTasks} currentUserId={currentUserId} notify={notify} storeFilter={storeFilter}/>}
         {view==="inventory" && <InventoryView inventory={inventory} setInventory={setInventory} notify={notify} storeFilter={storeFilter} currentUserId={currentUserId} stores={stores} stocktakes={stocktakes} setStocktakes={setStocktakes} users={users} currentRole={myRole}/>}
-          {view==="inspect"   && <OrderView inspectOnly inventory={inventory} setInventory={setInventory} suppliers={suppliers} setSuppliers={setSuppliers} orders={orders} setOrders={setOrders} priceHistory={priceHistory} setPriceHistory={setPriceHistory} currentUserId={currentUserId} notify={notify} storeFilter={storeFilter} demandConfig={demandConfig} setDemandConfig={setDemandConfig}/>}
-          {view==="order"     && <OrderView inventory={inventory} setInventory={setInventory} suppliers={suppliers} setSuppliers={setSuppliers} orders={orders} setOrders={setOrders} priceHistory={priceHistory} setPriceHistory={setPriceHistory} currentUserId={currentUserId} notify={notify} storeFilter={storeFilter} demandConfig={demandConfig} setDemandConfig={setDemandConfig}/>}
+          {view==="inspect"   && <OrderView inspectOnly inventory={inventory} setInventory={setInventory} suppliers={suppliers} setSuppliers={setSuppliers} orders={orders} setOrders={setOrders} priceHistory={priceHistory} setPriceHistory={setPriceHistory} currentUserId={currentUserId} notify={notify} storeFilter={storeFilter} demandConfig={demandConfig} setDemandConfig={setDemandConfig} refreshSuppliers={syncEnabled ? refreshSuppliers : null}/>}
+          {view==="order"     && <OrderView inventory={inventory} setInventory={setInventory} suppliers={suppliers} setSuppliers={setSuppliers} orders={orders} setOrders={setOrders} priceHistory={priceHistory} setPriceHistory={setPriceHistory} currentUserId={currentUserId} notify={notify} storeFilter={storeFilter} demandConfig={demandConfig} setDemandConfig={setDemandConfig} refreshSuppliers={syncEnabled ? refreshSuppliers : null}/>}
           {view==="tasks"     && <TaskManagerView routines={routines} setRoutines={setRoutines} allPrepTasks={allPrepTasks} setAllPrepTasks={setAllPrepTasks} cleanTasks={cleanTasks} setCleanTasks={setCleanTasks} notify={notify} storeFilter={storeFilter} taskCats={taskCats} saveTaskCats={saveTaskCats} recipes={recipes} setRecipes={setRecipes} inventory={inventory}/>}
           {view==="ops"       && <OpsView currentUserId={currentUserId} storeFilter={storeFilter} notify={notify} openItems={openItems} setOpenItems={setOpenItems} closeItems={closeItems} setCloseItems={setCloseItems}/>}
           {view==="commission"&& <CommissionView allPrepTasks={allPrepTasks} cleanTasks={cleanTasks} pointConfig={pointConfig} setPointConfig={setPointConfig} currentUserId={currentUserId}/>}
