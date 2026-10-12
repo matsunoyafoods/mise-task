@@ -1102,12 +1102,13 @@ function SupplierWizard({mode, suppliers, setSuppliers, inventory, setInventory,
   const [picked, setPicked] = useState(()=>Object.fromEntries(storeItems.filter(i=>initSup && i.supplierId===initSup.id).map(i=>[i.id,true])));
 
   const METHOD_OPTS = [["email","📧 メール"],["line","💬 LINE"],["fax","📠 FAX"],["tel","📞 電話"],["app","📲 業者アプリ・発注サイト"],["other","📝 その他"]];
-  const FIELD = {email:["contact","メールアドレス","例: order@tanaka-seika.co.jp","email"], line:["lineId","LINEのID（@から始まる）","例: @tanaka_seika","text"], fax:["fax","FAX番号","例: 03-1234-5678","tel"], tel:["tel","電話番号","例: 090-1234-5678","tel"], app:["appName","アプリ名・サイト名","例: インフォマート / ○○の発注アプリ","text"], other:["otherDesc","発注の仕方（メモ）","例: 毎朝の配達時に口頭で","text"]};
+  const FIELD = {email:["contact","メールアドレス","例: order@tanaka-seika.co.jp","email"], line:["lineId","LINEのID（@から始まる・LINEグループで送るなら空でOK）","例: @tanaka_seika","text"], fax:["fax","FAX番号","例: 03-1234-5678","tel"], tel:["tel","電話番号","例: 090-1234-5678","tel"], app:["appName","アプリ名・サイト名","例: インフォマート / ○○の発注アプリ","text"], other:["otherDesc","発注の仕方（メモ）","例: 毎朝の配達時に口頭で","text"]};
 
   const saveManual = () => {
     if (!f.name.trim()) { notify("業者名を入れてください","warn"); return; }
     const [field] = FIELD[f.sendMethod];
-    if (f.sendMethod!=="app" && !String(f[field]||"").trim()) { notify("発注の送り先を入れてください","warn"); return; }
+    // 業者アプリ・LINE（botのグループで送る場合はIDが無くてもよい）は空でも保存できる
+    if (!["app","line"].includes(f.sendMethod) && !String(f[field]||"").trim()) { notify("発注の送り先を入れてください","warn"); return; }
     const data = { name:f.name.trim(), sendMethod:f.sendMethod, orderMethods:[f.sendMethod], contact:f.contact.trim(), lineId:f.lineId.trim(), fax:f.fax.trim(), tel:f.tel.trim(), otherDesc:f.otherDesc.trim(), appName:f.appName.trim() };
     if (sup) {
       setSuppliers(p=>p.map(x=>x.id===sup.id?{...x,...data}:x));
@@ -1187,7 +1188,7 @@ function SupplierWizard({mode, suppliers, setSuppliers, inventory, setInventory,
           ))}
         </div>
         {(()=>{ const [k,label,ph,type]=FIELD[f.sendMethod]; return (<>
-          <div style={{fontSize:13,fontWeight:700,color:"#45433F",marginBottom:6}}>{label} {f.sendMethod==="app"?"（任意）":"*"}</div>
+          <div style={{fontSize:13,fontWeight:700,color:"#45433F",marginBottom:6}}>{label} {["app","line"].includes(f.sendMethod)?"（任意）":"*"}</div>
           <input type={type} value={f[k]} onChange={e=>set(k,e.target.value)} placeholder={ph} style={{...inputS,marginBottom:14}}/>
         </>); })()}
         {f.sendMethod!=="tel" && (<>
