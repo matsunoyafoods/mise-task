@@ -124,6 +124,15 @@ const METHODS = {
       { step: "4", text: "そのまま下の欄に入力してください" },
     ]
   },
+  app: {
+    icon: "📲", label: "専用アプリ・発注サイト", color: "#B45309",
+    inputLabel: "アプリ名・サイト名",
+    placeholder: "例: インフォマート / ○○の発注アプリ",
+    field: "appName",
+    guide: [
+      { step: "💡", text: "自社の発注アプリや発注サイトで受け付けている場合に選んでください" },
+    ]
+  },
   other: {
     icon: "📝", label: "その他", color: "#6E6C66",
     inputLabel: "受注方法（自由記入）",
@@ -153,6 +162,7 @@ function SupplierRegPage() {
     instagramId: "",
     twitterId: "",
     otherDesc: "",
+    appName: "",
   });
 
   // API接続時: トークンから業者情報を取得
@@ -205,6 +215,7 @@ function SupplierRegPage() {
         instagramId: form.instagramId,
         twitterId: form.twitterId,
         otherDesc: form.otherDesc,
+        appName: form.appName,
       });
       setStep(4);
     } catch (e) {

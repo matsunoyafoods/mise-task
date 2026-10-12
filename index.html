@@ -298,8 +298,11 @@ let INITIAL_USERS = DEMO_DATA.USERS;
 let INITIAL_STORES = DEMO_DATA.STORES;
 
 let INITIAL_SUPPLIERS = DEMO_DATA.SUPPLIERS;
-const SEND_METHOD_LABELS = { email:"📧 メール", line:"💬 LINE", fax:"📠 FAX", tel:"📞 電話", sms:"📱 SMS", instagram:"📸 Instagram", twitter:"✕ X", other:"📝 その他" };
-const SEND_METHOD_COLORS = { email:"#0077B6", line:"#06C755", fax:"#6D28D9", tel:"#0F6E56", sms:"#C9184A", instagram:"#E1306C", twitter:"#555", other:"#6b7280" };
+const SEND_METHOD_LABELS = { email:"📧 メール", line:"💬 LINE", fax:"📠 FAX", tel:"📞 電話", sms:"📱 SMS", instagram:"📸 Instagram", twitter:"✕ X", app:"📲 業者アプリ", other:"📝 その他" };
+const SEND_METHOD_COLORS = { email:"#0077B6", line:"#06C755", fax:"#6D28D9", tel:"#0F6E56", sms:"#C9184A", instagram:"#E1306C", twitter:"#555", app:"#B45309", other:"#6b7280" };
+// アプリ側から送らない発注方法（業者専用アプリ・口頭など）。発注ボタンでそのまま「発注済み」にして検品待ちへ
+const DIRECT_ORDER_METHODS = ["app","other"];
+const primaryMethodOf = (sup) => sup?.sendMethod || sup?.orderMethods?.[0] || "other";
 
 
 // ─── UNITS ───────────────────────────────────
@@ -1027,7 +1030,7 @@ function SupplierWizard({mode, suppliers, setSuppliers, inventory, setInventory,
   const sup = suppliers.find(s=>s.id===supId) || initSup;
   const [f, setF] = useState(()=>({
     name: initSup?.name||"", sendMethod: initSup?.sendMethod || initSup?.orderMethods?.[0] || "email",
-    contact: initSup?.contact||initSup?.email||"", lineId: initSup?.lineId||"", fax: initSup?.fax||"", tel: initSup?.tel||"", otherDesc: initSup?.otherDesc||"",
+    contact: initSup?.contact||initSup?.email||"", lineId: initSup?.lineId||"", fax: initSup?.fax||"", tel: initSup?.tel||"", otherDesc: initSup?.otherDesc||"", appName: initSup?.appName||"",
   }));
   const set = (k,v) => setF(p=>({...p,[k]:v}));
   const newToken = () => "tok_"+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
@@ -1035,14 +1038,14 @@ function SupplierWizard({mode, suppliers, setSuppliers, inventory, setInventory,
   const storeItems = (inventory||[]).filter(i=>!storeFilter || String(i.storeId)===String(storeFilter));
   const [picked, setPicked] = useState(()=>Object.fromEntries(storeItems.filter(i=>initSup && i.supplierId===initSup.id).map(i=>[i.id,true])));
 
-  const METHOD_OPTS = [["email","📧 メール"],["line","💬 LINE"],["fax","📠 FAX"],["tel","📞 電話"],["other","📝 その他"]];
-  const FIELD = {email:["contact","メールアドレス","例: order@tanaka-seika.co.jp","email"], line:["lineId","LINEのID（@から始まる）","例: @tanaka_seika","text"], fax:["fax","FAX番号","例: 03-1234-5678","tel"], tel:["tel","電話番号","例: 090-1234-5678","tel"], other:["otherDesc","発注の仕方（メモ）","例: 毎朝の配達時に口頭で","text"]};
+  const METHOD_OPTS = [["email","📧 メール"],["line","💬 LINE"],["fax","📠 FAX"],["tel","📞 電話"],["app","📲 業者アプリ・発注サイト"],["other","📝 その他"]];
+  const FIELD = {email:["contact","メールアドレス","例: order@tanaka-seika.co.jp","email"], line:["lineId","LINEのID（@から始まる）","例: @tanaka_seika","text"], fax:["fax","FAX番号","例: 03-1234-5678","tel"], tel:["tel","電話番号","例: 090-1234-5678","tel"], app:["appName","アプリ名・サイト名","例: インフォマート / ○○の発注アプリ","text"], other:["otherDesc","発注の仕方（メモ）","例: 毎朝の配達時に口頭で","text"]};
 
   const saveManual = () => {
     if (!f.name.trim()) { notify("業者名を入れてください","warn"); return; }
     const [field] = FIELD[f.sendMethod];
-    if (!String(f[field]||"").trim()) { notify("発注の送り先を入れてください","warn"); return; }
-    const data = { name:f.name.trim(), sendMethod:f.sendMethod, orderMethods:[f.sendMethod], contact:f.contact.trim(), lineId:f.lineId.trim(), fax:f.fax.trim(), tel:f.tel.trim(), otherDesc:f.otherDesc.trim() };
+    if (f.sendMethod!=="app" && !String(f[field]||"").trim()) { notify("発注の送り先を入れてください","warn"); return; }
+    const data = { name:f.name.trim(), sendMethod:f.sendMethod, orderMethods:[f.sendMethod], contact:f.contact.trim(), lineId:f.lineId.trim(), fax:f.fax.trim(), tel:f.tel.trim(), otherDesc:f.otherDesc.trim(), appName:f.appName.trim() };
     if (sup) {
       setSuppliers(p=>p.map(x=>x.id===sup.id?{...x,...data}:x));
       notify("✓ 「"+data.name+"」を更新しました");
@@ -1121,7 +1124,7 @@ function SupplierWizard({mode, suppliers, setSuppliers, inventory, setInventory,
           ))}
         </div>
         {(()=>{ const [k,label,ph,type]=FIELD[f.sendMethod]; return (<>
-          <div style={{fontSize:13,fontWeight:700,color:"#45433F",marginBottom:6}}>{label} *</div>
+          <div style={{fontSize:13,fontWeight:700,color:"#45433F",marginBottom:6}}>{label} {f.sendMethod==="app"?"（任意）":"*"}</div>
           <input type={type} value={f[k]} onChange={e=>set(k,e.target.value)} placeholder={ph} style={{...inputS,marginBottom:14}}/>
         </>); })()}
         {f.sendMethod!=="tel" && (<>
@@ -3195,9 +3198,15 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
     const methods = sup.orderMethods?.length ? sup.orderMethods : [sup.sendMethod];
     const methodLabels = methods
       .map(m=>({email:"メール",line:"LINE",instagram:"Instagram",twitter:"X",other:"その他",fax:"FAX",sms:"SMS",tel:"電話"})[m]||m).join(" / ");
-    notify(`✓ ${sup.name} への発注を記録しました。${methodLabels}で送信してください`);
+    if (DIRECT_ORDER_METHODS.includes(primaryMethodOf(sup))) notify(`✓ ${sup.name} を発注済みにしました。届いたら「検品」で確認できます`);
+    else notify(`✓ ${sup.name} への発注を記録しました。${methodLabels}で送信してください`);
 
     setSelectedItems({});
+    if (DIRECT_ORDER_METHODS.includes(primaryMethodOf(sup))) {
+      // 業者アプリなどで発注済み → 送る画面は出さず、そのまま検品待ちへ
+      setConfirmOrder(null);
+      return;
+    }
     // 本部が「全店」表示でも、発注を記録した店舗のbotで送れるように店舗番号を渡す
     setSentInfo({sup, items, text: buildOrderText(sup, items, newOrder.storeId), storeId: newOrder.storeId ?? null});
     setConfirmOrder(null);
@@ -3351,9 +3360,9 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
             </div>
             <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
               {(confirmOrder.sup.orderMethods?.length ? confirmOrder.sup.orderMethods : [confirmOrder.sup.sendMethod]).map(m=>{
-                const MICO={email:"📧",line:"💬",instagram:"📸",twitter:"✕",other:"📝",fax:"📠",sms:"📱"};
-                const MLABEL={email:"メール",line:"LINE",instagram:"Instagram",twitter:"X",other:"その他",fax:"FAX",sms:"SMS"};
-                const MCOL={email:"#0077B6",line:"#06C755",instagram:"#E1306C",twitter:"#555",other:"#6b7280",fax:"#9B2226",sms:"#6D28D9"};
+                const MICO={email:"📧",line:"💬",instagram:"📸",twitter:"✕",other:"📝",fax:"📠",sms:"📱",tel:"📞",app:"📲"};
+                const MLABEL={email:"メール",line:"LINE",instagram:"Instagram",twitter:"X",other:"その他",fax:"FAX",sms:"SMS",tel:"電話",app:(confirmOrder.sup.appName||"業者アプリ")};
+                const MCOL={email:"#0077B6",line:"#06C755",instagram:"#E1306C",twitter:"#555",other:"#6b7280",fax:"#9B2226",sms:"#6D28D9",tel:"#0F6E56",app:"#B45309"};
                 return (
                   <span key={m} style={{fontSize:13,padding:"4px 10px",borderRadius:20,background:(MCOL[m]||"#ECE9E1")+"33",color:MCOL[m]||"#5F5D58",border:"1px solid "+(MCOL[m]||"#E4E0D6")+"66",fontWeight:700}}>
                     {MICO[m]} {MLABEL[m]}
@@ -3370,12 +3379,17 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
           ))}
           <div style={{marginTop:20}}>
             {(()=>{
+              const direct = DIRECT_ORDER_METHODS.includes(primaryMethodOf(confirmOrder.sup));
               return (
                 <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                  <div style={{fontSize:13,color:"#5F5D58",lineHeight:1.6,marginBottom:2}}>まず発注を記録します。次の画面で、LINE・メールなどを開いて業者さんに送ります。</div>
+                  <div style={{fontSize:13,color:"#5F5D58",lineHeight:1.6,marginBottom:2}}>
+                    {direct
+                      ? <>{confirmOrder.sup.appName ? "「"+confirmOrder.sup.appName+"」" : "業者さんのアプリなど"}で発注したら押してください。<b>発注済み</b>になり、届いたら検品で確認できます。</>
+                      : "まず発注を記録します。次の画面で、LINE・メールなどを開いて業者さんに送ります。"}
+                  </div>
                   <button onClick={executeSendOrder}
                     style={{padding:"15px",background:"#E8792F",color:"#fff",border:"none",borderRadius:12,fontSize:16,fontWeight:800,cursor:"pointer"}}>
-                    ✓ 発注を記録する
+                    {direct ? "✓ 発注済みにする" : "✓ 発注を記録する"}
                   </button>
                   <button onClick={()=>setConfirmOrder(null)}
                     style={{padding:"10px",background:"transparent",color:"#B42318",border:"1px solid #F5C2C0",borderRadius:8,fontSize:14,cursor:"pointer"}}>
@@ -3607,7 +3621,7 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
                   <div>
                     <div style={{fontSize:15,fontWeight:700,color:"#2C2C2A",marginBottom:6}}>{sup.name}</div>
                     <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                      <Chip label={SEND_METHOD_LABELS[method]||"📝 その他"} color={mc} bg={mc+"11"}/>
+                      <Chip label={method==="app"&&sup.appName ? "📲 "+sup.appName : (SEND_METHOD_LABELS[method]||"📝 その他")} color={mc} bg={mc+"11"}/>
                       {sup.contact && <Chip label={sup.contact} color="#5F5D58" bg="#ECE9E1"/>}
                       {sup.fax && <Chip label={`FAX: ${sup.fax}`} color="#5F5D58" bg="#ECE9E1"/>}
                       {sup.tel && <Chip label={`TEL: ${sup.tel}`} color="#5F5D58" bg="#ECE9E1"/>}
