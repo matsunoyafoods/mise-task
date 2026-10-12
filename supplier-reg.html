@@ -89,15 +89,11 @@ const METHODS = {
   },
   line: {
     icon: "💬", label: "LINE", color: "#06C755",
-    inputLabel: "LINEのID（@から始まる番号）",
-    placeholder: "例: @abc-1234xyz",
-    field: "lineId",
+    inputLabel: "LINEグループで受け取る",
+    field: null,
     guide: [
-      { step: "1", text: "LINEアプリを開く" },
-      { step: "2", text: "右下の「ホーム」→ 右上の自分のアイコンをタップ" },
-      { step: "3", text: "「プロフィール」画面の右上に歯車（設定）ボタンが表示されます" },
-      { step: "4", text: "IDをコピーして下の欄にそのままペーストしてください" },
-      { step: "💡", text: "IDが「@」から始まる場合はそのまま入力してください" },
+      { step: "1", text: "お店の担当者が、業者さんとのLINEグループを作って、お店の発注botを招待します" },
+      { step: "💡", text: "グループに参加していただければ、発注はそのグループに届きます（IDの入力は不要です）" },
     ]
   },
   instagram: {
@@ -211,7 +207,6 @@ function SupplierRegPage() {
         tel: form.tel,
         methods: form.methods,
         email: form.email,
-        lineId: form.lineId,
         instagramId: form.instagramId,
         twitterId: form.twitterId,
         otherDesc: form.otherDesc,
@@ -493,7 +488,7 @@ function SupplierRegPage() {
             {/* 取得ガイド */}
             <div style={{ background: "#F7F5F0", border: "1px solid #E4E0D6", borderRadius: 12, padding: "14px 16px", marginBottom: 18 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: "#E8792F", marginBottom: 12 }}>
-                📋 {currentCfg.inputLabel}の確認方法
+                📋 {currentCfg.field ? currentCfg.inputLabel + "の確認方法" : currentCfg.inputLabel}
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {currentCfg.guide.map((g, i) => (
@@ -514,8 +509,8 @@ function SupplierRegPage() {
               </div>
             </div>
 
-            {/* 入力欄（1つだけ） */}
-            <div style={{ marginBottom: 24 }}>
+            {/* 入力欄（1つだけ。LINEは入力なし） */}
+            {currentCfg.field && <div style={{ marginBottom: 24 }}>
               <div style={{ fontSize: 13, color: "#5F5D58", marginBottom: 8, fontWeight: 700 }}>
                 {currentCfg.inputLabel} ＊
               </div>
@@ -537,7 +532,7 @@ function SupplierRegPage() {
                   ✓ 入力されました
                 </div>
               )}
-            </div>
+            </div>}
 
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={() => methodStep === 0 ? setStep(2) : setMethodStep(p => p - 1)}
@@ -568,7 +563,7 @@ function SupplierRegPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 10, textAlign: "left", marginBottom: 28 }}>
               {form.methods.map(m => {
                 const cfg = METHODS[m];
-                const val = form[cfg.field];
+                const val = cfg.field ? form[cfg.field] : "お店からLINEグループに招待します";
                 return (
                   <div key={m} style={{
                     display: "flex", alignItems: "center", gap: 14,

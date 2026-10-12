@@ -1102,14 +1102,14 @@ function SupplierWizard({mode, suppliers, setSuppliers, inventory, setInventory,
   const [picked, setPicked] = useState(()=>Object.fromEntries(storeItems.filter(i=>initSup && i.supplierId===initSup.id).map(i=>[i.id,true])));
 
   const METHOD_OPTS = [["email","📧 メール"],["line","💬 LINE"],["fax","📠 FAX"],["tel","📞 電話"],["app","📲 業者アプリ・発注サイト"],["other","📝 その他"]];
-  const FIELD = {email:["contact","メールアドレス","例: order@tanaka-seika.co.jp","email"], line:["lineId","LINEのID（@から始まる・LINEグループで送るなら空でOK）","例: @tanaka_seika","text"], fax:["fax","FAX番号","例: 03-1234-5678","tel"], tel:["tel","電話番号","例: 090-1234-5678","tel"], app:["appName","アプリ名・サイト名","例: インフォマート / ○○の発注アプリ","text"], other:["otherDesc","発注の仕方（メモ）","例: 毎朝の配達時に口頭で","text"]};
+  const FIELD = {email:["contact","メールアドレス","例: order@tanaka-seika.co.jp","email"], line:null, fax:["fax","FAX番号","例: 03-1234-5678","tel"], tel:["tel","電話番号","例: 090-1234-5678","tel"], app:["appName","アプリ名・サイト名","例: インフォマート / ○○の発注アプリ","text"], other:["otherDesc","発注の仕方（メモ）","例: 毎朝の配達時に口頭で","text"]};
 
   const saveManual = () => {
     if (!f.name.trim()) { notify("業者名を入れてください","warn"); return; }
-    const [field] = FIELD[f.sendMethod];
-    // 業者アプリ・LINE（botのグループで送る場合はIDが無くてもよい）は空でも保存できる
-    if (!["app","line"].includes(f.sendMethod) && !String(f[field]||"").trim()) { notify("発注の送り先を入れてください","warn"); return; }
-    const data = { name:f.name.trim(), sendMethod:f.sendMethod, orderMethods:[f.sendMethod], contact:f.contact.trim(), lineId:f.lineId.trim(), fax:f.fax.trim(), tel:f.tel.trim(), otherDesc:f.otherDesc.trim(), appName:f.appName.trim() };
+    const [field] = FIELD[f.sendMethod] || [];
+    // 業者アプリは任意。LINEはbotのグループで送るので入力欄なし
+    if (field && f.sendMethod!=="app" && !String(f[field]||"").trim()) { notify("発注の送り先を入れてください","warn"); return; }
+    const data = { name:f.name.trim(), sendMethod:f.sendMethod, orderMethods:[f.sendMethod], contact:f.contact.trim(), fax:f.fax.trim(), tel:f.tel.trim(), otherDesc:f.otherDesc.trim(), appName:f.appName.trim() };
     if (sup) {
       setSuppliers(p=>p.map(x=>x.id===sup.id?{...x,...data}:x));
       notify("✓ 「"+data.name+"」を更新しました");
@@ -1187,8 +1187,9 @@ function SupplierWizard({mode, suppliers, setSuppliers, inventory, setInventory,
               style={{padding:"9px 14px",borderRadius:999,border:"2px solid "+(f.sendMethod===k?"#E8792F":"#EDE3D6"),background:f.sendMethod===k?"#E8792F":"#FFFFFF",color:f.sendMethod===k?"#fff":"#2C2C2A",fontSize:14,fontWeight:800,cursor:"pointer"}}>{l}</button>
           ))}
         </div>
-        {(()=>{ const [k,label,ph,type]=FIELD[f.sendMethod]; return (<>
-          <div style={{fontSize:13,fontWeight:700,color:"#45433F",marginBottom:6}}>{label} {["app","line"].includes(f.sendMethod)?"（任意）":"*"}</div>
+        {f.sendMethod==="line" && <div style={{background:"#EAF7EF",color:"#1F6F3A",borderRadius:12,padding:"10px 14px",fontSize:14,lineHeight:1.6,marginBottom:14}}>💬 LINEは、業者さんとのLINEグループにお店のbotが発注を送ります。保存したあと、業者一覧の「LINEグループ」から登録できます。</div>}
+        {FIELD[f.sendMethod] && (()=>{ const [k,label,ph,type]=FIELD[f.sendMethod]; return (<>
+          <div style={{fontSize:13,fontWeight:700,color:"#45433F",marginBottom:6}}>{label} {f.sendMethod==="app"?"（任意）":"*"}</div>
           <input type={type} value={f[k]} onChange={e=>set(k,e.target.value)} placeholder={ph} style={{...inputS,marginBottom:14}}/>
         </>); })()}
         {f.sendMethod!=="tel" && (<>
@@ -1303,17 +1304,12 @@ function SupplierSelfRegModal({token, suppliers, setSuppliers, onClose}) {
     },
     line: {
       icon:"💬", label:"LINE", color:"#06C755",
-      inputLabel:"LINE連携コード",
-      placeholder:"例: U1234567890abcdef1234567890abcdef",
-      field:"lineId",
+      inputLabel:"LINEグループで受け取る",
+      field:null,
       guide: [
-        {step:"1", text:"下のボタンからお店のLINE公式アカウントを友だち追加してください"},
-        {step:"2", text:"友だち追加するとLINEに「連携コード」が届きます"},
-        {step:"3", text:"届いた連携コード（Uから始まる文字列）をコピーしてください"},
-        {step:"4", text:"コピーしたコードを下の入力欄に貼り付けてください"},
-        {step:"💡", text:"友だち追加することで発注が直接LINEに届くようになります"},
+        {step:"1", text:"お店の担当者が、業者さんとのLINEグループを作って、お店の発注botを招待します"},
+        {step:"💡", text:"グループに参加していただければ、発注はそのグループに届きます（IDの入力は不要です）"},
       ],
-      addFriendButton: true,
     },
     instagram: {
       icon:"📸", label:"Instagram", color:"#E1306C",
@@ -1370,7 +1366,7 @@ function SupplierSelfRegModal({token, suppliers, setSuppliers, onClose}) {
   const save = () => {
     setSuppliers(p=>p.map(s=>s.token===token ? {
       ...s, name:form.companyName, contactName:form.contactName, tel:form.tel,
-      orderMethods:form.methods, contact:form.email, lineId:form.lineId,
+      orderMethods:form.methods, contact:form.email,
       instagramId:form.instagramId, twitterId:form.twitterId, otherDesc:form.otherDesc,
       selfRegistered:true, registeredAt:new Date().toLocaleDateString("ja-JP"),
     } : s));
@@ -1504,7 +1500,7 @@ function SupplierSelfRegModal({token, suppliers, setSuppliers, onClose}) {
 
           {/* 取得ガイド */}
           <div style={{background:"#FFFFFF",border:"1px solid #E4E0D6",borderRadius:10,padding:"12px 14px",marginBottom:16}}>
-            <div style={{fontSize:13,fontWeight:700,color:"#6D28D9",marginBottom:10}}>📋 {currentCfg.inputLabel}の確認方法</div>
+            <div style={{fontSize:13,fontWeight:700,color:"#6D28D9",marginBottom:10}}>📋 {currentCfg.field ? currentCfg.inputLabel+"の確認方法" : currentCfg.inputLabel}</div>
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
               {currentCfg.guide.map((g,i)=>(
                 <div key={i} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
@@ -1531,8 +1527,8 @@ function SupplierSelfRegModal({token, suppliers, setSuppliers, onClose}) {
             </a>
           )}
 
-          {/* 入力欄（1つだけ） */}
-          <div style={{marginBottom:20}}>
+          {/* 入力欄（1つだけ。LINEは入力なし） */}
+          {currentCfg.field && <div style={{marginBottom:20}}>
             <div style={{fontSize:13,color:"#5F5D58",marginBottom:6}}>{currentCfg.inputLabel} ＊</div>
             <input
               autoFocus
@@ -1547,7 +1543,7 @@ function SupplierSelfRegModal({token, suppliers, setSuppliers, onClose}) {
                 ✓ 入力されました
               </div>
             )}
-          </div>
+          </div>}
 
           <div style={{display:"flex",gap:10}}>
             <button onClick={()=>methodStep===0?setStep(2):setMethodStep(p=>p-1)}
@@ -1576,7 +1572,7 @@ function SupplierSelfRegModal({token, suppliers, setSuppliers, onClose}) {
           <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:24,textAlign:"left"}}>
             {form.methods.map(m=>{
               const cfg = METHODS[m];
-              const val = form[cfg.field];
+              const val = cfg.field ? form[cfg.field] : "お店からLINEグループに招待します";
               return (
                 <div key={m} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",
                   background:cfg.color+"11",border:"1px solid "+cfg.color+"33",borderRadius:10}}>
@@ -2567,7 +2563,7 @@ MISE TASKは飲食店・飲食チェーン向けのオペレーション管理�
 【業者登録とQR発行】
 - 業者登録: 発注→「業者一覧」→「＋ 業者を追加」→「自分で入力する」か「業者さんに入力してもらう（QR/URL）」→続けて仕入れる商品を選ぶ
 - 発行されたQRコードまたはURLを業者に送付する（LINE・メール・FAX・印刷など）
-- 業者がQRまたはURLを開くと業者登録フォームが表示され、業者自身がLINE ID・メール・連絡先などを入力して登録する
+- 業者がQRまたはURLを開くと業者登録フォームが表示され、業者自身が発注の受け取り方（メール・LINEグループなど）と連絡先を入力して登録する
 - 業者が登録を完了すると発注が使えるようになる
 
 【仕込み管理】
@@ -2595,7 +2591,7 @@ MISE TASKは飲食店・飲食チェーン向けのオペレーション管理�
 
 【トラブル対応】
 - スタッフが表示されない: 画面右上の店舗フィルターを確認。「全店舗」にすると全スタッフが表示される
-- 発注が業者に届かない: 発注管理→業者タブで対象業者の連絡先・LINE IDを確認。業者側でLINEのブロックがないか確認
+- 発注が業者に届かない: 発注管理→業者タブで対象業者の連絡先と「LINEグループ」の登録状態を確認。botがグループから外されていないか確認
 - 在庫アラートが出ない: 商品の発注点（最低在庫量）が正しく設定されているか在庫管理で確認
 - タスクが表示されない: 日付フィルター・店舗フィルターを確認。別の日や別の店舗のタスクが選択されている可能性がある
 - 画面が固まった: ブラウザをリロード（F5）。キャッシュをクリアしてみる
