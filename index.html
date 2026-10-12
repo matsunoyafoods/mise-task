@@ -110,6 +110,8 @@ const api = {
     // LINE発注bot（店舗ごと）
     lineSend: (storeId, supplierId, text) => api._fetch(`/line/send`, { method: "POST", body: JSON.stringify({ storeId, supplierId, text }) }),
     lineQuota: (storeId) => api._fetch(`/line/quota?storeId=${encodeURIComponent(storeId)}`),
+    // botのキーを登録（本部/その店舗の店長）。キーは返ってこない
+    lineSetup: (storeId, token, secret) => api._fetch(`/line/setup`, { method: "POST", body: JSON.stringify({ storeId, token, secret }) }),
     // お店アカウント端末では、だれに切り替えていてもお店アカウントの権限でQRを発行する
     issueQrWith: (storeId, token) => api._fetch(`/qr/issue`, { method: "POST", body: JSON.stringify({ storeId }),
       headers: { "Content-Type": "application/json", Authorization: "Bearer " + token } }),
@@ -1012,6 +1014,59 @@ function IssueSupplierModal({onClose, setSuppliers, notify}) {
 }
 
 // ─── 業者を追加／編集／URL共有／商品ひも付け（お店側の一連の流れ）───
+// ─── LINE発注botの設定（店舗ごと）。キーは保存したら画面に戻さない ───
+function LineBotSetupModal({storeId, current, notify, onClose, onSaved}) {
+  const storeName = (INITIAL_STORES||[]).find(s=>String(s.id)===String(storeId))?.name || "この店舗";
+  const [token, setToken] = useState("");
+  const [secret, setSecret] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null); // {kind:"ok"|"warn"|"error", msg}
+  const inputS = {width:"100%",padding:"12px 14px",background:"#FFFFFF",border:"1px solid #E4E0D6",borderRadius:10,fontSize:15,color:"#2C2C2A",marginBottom:12,fontFamily:"inherit"};
+  const save = async () => {
+    if (!token.trim() || !secret.trim()) { notify("2つのキーを両方入れてください","warn"); return; }
+    setBusy(true); setResult(null);
+    try {
+      const r = await api.auth.lineSetup(storeId, token.trim(), secret.trim());
+      setToken(""); setSecret(""); // 送ったら画面から消す
+      if (r?.webhookOk) { setResult({kind:"ok", msg:`✓ つながりました。bot「${r.botName||""}」で${storeName}の発注を送れます。`}); notify("✓ LINE botを設定しました"); }
+      else if (r?.webhookSet) setResult({kind:"warn", msg:`キーは保存しましたが、接続テストがうまくいきませんでした。「チャネルシークレット」が正しいか、LINEの応答設定で「Webhook」がオンになっているか確かめて、もう一度保存してください。${r.reason?"（理由: "+r.reason+"）":""}`});
+      else setResult({kind:"warn", msg:"キーは保存しましたが、LINEへのWebhook URLの登録に失敗しました。少し時間をおいて、もう一度保存してください。"});
+      onSaved && onSaved();
+    } catch (e) {
+      const code = e?.payload?.error?.code;
+      setResult({kind:"error", msg: e?.payload?.error?.message || (code==="forbidden" ? "LINE botの設定は本部か、その店舗の店長だけができます" : "保存に失敗しました。もう一度お試しください。")});
+    }
+    setBusy(false);
+  };
+  const box = (k) => ({ok:["#EAF3DE","#2F7A1F"],warn:["#FDF3DF","#A16207"],error:["#FDEDEC","#B42318"]})[k];
+  return (
+    <Modal onClose={onClose} width={480}>
+      <div style={{fontSize:20,fontWeight:800,color:"#2C2C2A",marginBottom:4}}>💬 LINE発注botの設定</div>
+      <div style={{fontSize:14,color:"#5F5D58",marginBottom:12}}>{storeName}{current?.configured ? `（今のbot: ${current.botName||"設定済み"}）` : "（まだ設定されていません）"}</div>
+      <div style={{background:"#FBFAF7",border:"1px solid #EDE7DD",borderRadius:12,padding:"12px 14px",marginBottom:14}}>
+        <div style={{fontSize:14,fontWeight:700,color:"#2C2C2A",marginBottom:6}}>LINE側でやること（はじめの1回だけ）</div>
+        <ol style={{paddingLeft:20,fontSize:13,color:"#45433F",lineHeight:1.9,margin:0}}>
+          <li>LINE Official Account Managerで、この店舗の公式アカウントを作る</li>
+          <li>設定 →「Messaging API」→「Messaging APIを利用する」</li>
+          <li>設定 →「アカウント設定」→「グループ・複数人トークへの参加を許可する」</li>
+          <li>「応答設定」で、応答メッセージをオフ・Webhookをオン</li>
+          <li>LINE Developersでこのbotを開き、「チャネルシークレット」と「チャネルアクセストークン（長期）」をコピー</li>
+        </ol>
+      </div>
+      <div style={{fontSize:13,fontWeight:700,color:"#45433F",marginBottom:6}}>チャネルアクセストークン（長期）</div>
+      <input type="password" autoComplete="off" value={token} onChange={e=>setToken(e.target.value)} placeholder="ここに貼り付け" style={inputS}/>
+      <div style={{fontSize:13,fontWeight:700,color:"#45433F",marginBottom:6}}>チャネルシークレット</div>
+      <input type="password" autoComplete="off" value={secret} onChange={e=>setSecret(e.target.value)} placeholder="ここに貼り付け" style={inputS}/>
+      <div style={{fontSize:12,color:"#6E6C66",marginBottom:12,lineHeight:1.6}}>保存したキーは、この画面にもほかの画面にも表示されません。保存すると、Webhook URLの登録と接続テストを自動で行います。</div>
+      {result && <div style={{background:box(result.kind)[0],color:box(result.kind)[1],borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:12,lineHeight:1.6}}>{result.msg}</div>}
+      <div style={{display:"flex",gap:10}}>
+        <Btn onClick={onClose} color="#ECE9E1" style={{flex:1,padding:"12px"}}>閉じる</Btn>
+        <Btn onClick={save} color="#06C755" disabled={busy} style={{flex:2,padding:"12px",fontSize:15,opacity:busy?0.6:1}}>{busy?"確認中…":"保存してつなぐ"}</Btn>
+      </div>
+    </Modal>
+  );
+}
+
 // LINEグループ登録コード（MT-4けた）。ほかの業者と重ならないものを作る
 function makeLineCode(suppliers) {
   const used = new Set((suppliers||[]).map(x=>x.lineCode).filter(Boolean));
@@ -3128,7 +3183,9 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
   const [confirmOrder, setConfirmOrder] = useState(null);
   const [sentInfo, setSentInfo] = useState(null); // 発注を記録した後の「送る」画面 {sup, links, text}
   const [tab, setTab] = useState("candidates");
-  const [lineQuota, setLineQuota] = useState(null); // {configured, quota:{limit,used}}
+  const [lineQuota, setLineQuota] = useState(null); // {configured, botName, quota:{limit,used}}
+  const [showLineSetup, setShowLineSetup] = useState(false);
+  const reloadLineQuota = () => { if (storeFilter!=null) api.auth.lineQuota(storeFilter).then(setLineQuota).catch(()=>setLineQuota(null)); };
   // 業者一覧を開いたとき: 最新の業者（グループ登録の状態）と今月のLINE送信数を取り直す
   useEffect(() => {
     if (tab!=="suppliers") return;
@@ -3608,12 +3665,17 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
           </button>
           {storeFilter!=null && lineQuota && (
             lineQuota.configured===false
-              ? <div style={{background:"#FBFAF7",border:"1px solid #EDE7DD",borderRadius:14,padding:"12px 16px",marginBottom:14,fontSize:14,color:"#5F5D58"}}>💬 この店舗のLINE発注botは、まだ設定されていません。</div>
+              ? <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap",background:"#FBFAF7",border:"1px solid #EDE7DD",borderRadius:14,padding:"12px 16px",marginBottom:14,fontSize:14,color:"#5F5D58"}}>
+                  <span>💬 この店舗のLINE発注botは、まだ設定されていません。</span>
+                  <button onClick={()=>setShowLineSetup(true)} style={{padding:"8px 14px",background:"#06C755",color:"#fff",border:"none",borderRadius:999,fontSize:14,fontWeight:800,cursor:"pointer"}}>⚙ botを設定する</button>
+                </div>
               : (()=>{ const q=lineQuota.quota; const lim=q?.limit; const used=q?.used??0; const pct=lim?Math.min(100,Math.round(used/lim*100)):0; const col=pct>=100?"#B42318":pct>=80?"#C2410C":"#06C755";
                   return (
                     <div style={{background:"#FFFFFF",border:"1px solid #E4E0D6",borderRadius:14,padding:"12px 16px",marginBottom:14}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:10,marginBottom:lim?8:0}}>
-                        <span style={{fontSize:14,fontWeight:700,color:"#2C2C2A"}}>💬 今月のLINE送信数（bot）</span>
+                        <span style={{fontSize:14,fontWeight:700,color:"#2C2C2A"}}>💬 今月のLINE送信数{lineQuota.botName?`（${lineQuota.botName}）`:"（bot）"}
+                          <button onClick={()=>setShowLineSetup(true)} style={{marginLeft:8,padding:"2px 10px",background:"#FFFFFF",color:"#45433F",border:"1px solid #EDE3D6",borderRadius:999,fontSize:12,fontWeight:700,cursor:"pointer"}}>⚙ 設定</button>
+                        </span>
                         <span style={{fontSize:16,fontWeight:800,color:col}}>{q ? (lim ? `${used} / ${lim} 通` : `${used} 通（上限なし）`) : "取得できませんでした"}</span>
                       </div>
                       {lim ? <div style={{height:8,background:"#ECE9E1",borderRadius:99,overflow:"hidden"}}><div style={{width:pct+"%",height:"100%",background:col}}/></div> : null}
@@ -3701,6 +3763,7 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
       {showDemand && <DemandSettingsModal config={demandConfig} onClose={()=>setShowDemand(false)} onSave={(d)=>{ setDemandConfig && setDemandConfig(d); notify("✓ 需要設定を保存しました"); }}/>}
 
       {showSupplierForm && <IssueSupplierModal onClose={()=>setShowSupplierForm(false)} setSuppliers={setSuppliers} notify={notify}/>}
+      {showLineSetup && storeFilter!=null && <LineBotSetupModal storeId={storeFilter} current={lineQuota} notify={notify} onClose={()=>setShowLineSetup(false)} onSaved={reloadLineQuota}/>}
       {supWizard && <SupplierWizard mode={supWizard} suppliers={suppliers} setSuppliers={setSuppliers} inventory={inventory} setInventory={setInventory} storeFilter={storeFilter} notify={notify} onClose={()=>setSupWizard(null)} refreshSuppliers={refreshSuppliers}/>}
 
       {showSupplierReg && (
