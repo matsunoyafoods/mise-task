@@ -3628,8 +3628,8 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
                   </div>
                   <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
                     {sup.selfRegistered
-                      ? <span style={{fontSize:12,color:"#2F7A1F",background:"#EAF3DE",padding:"3px 8px",borderRadius:20,border:"1px solid #C0DD97"}}>✓ 登録済み</span>
-                      : <span style={{fontSize:12,color:"#C2410C",background:"#FDF0E6",padding:"3px 8px",borderRadius:20,border:"1px solid #F6CFAF"}}>未登録</span>
+                      ? <span style={{fontSize:12,color:"#2F7A1F",background:"#EAF3DE",padding:"3px 8px",borderRadius:20,border:"1px solid #C0DD97"}}>✓ 業者情報 登録済み</span>
+                      : <span style={{fontSize:12,color:"#C2410C",background:"#FDF0E6",padding:"3px 8px",borderRadius:20,border:"1px solid #F6CFAF"}}>業者情報 未登録</span>
                     }
                     <div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"flex-end"}}>
                       <button onClick={()=>setSupWizard({type:"items",sup})}
