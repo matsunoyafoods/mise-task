@@ -712,13 +712,15 @@ async function lineQuotaRes(c: AppClaims, req: Request): Promise<Response> {
   const storeId = new URL(req.url).searchParams.get("storeId") || String(c.store_id ?? "");
   if (!storeId) return err("invalid_input", "storeId が必要です");
   const cr = await lineCreds(c.tenant_id, storeId);
-  if (!cr.token) return json({ configured: false });
+  // LINE側に貼るWebhook URL（秘密ではない）。設定画面に表示する
+  const webhookUrl = `${Deno.env.get("SUPABASE_URL") || ""}/functions/v1/api/line/webhook/${c.tenant_id}/${storeId}`;
+  if (!cr.token) return json({ configured: false, webhookUrl });
   let botName = cr.botName || "";
   try {
     if (!botName) { const i = await lineCall(cr.token, "/info"); botName = String((await i.json().catch(() => ({})))?.displayName || ""); }
   } catch { /* bot名は取れなくてもよい */ }
-  try { return json({ configured: true, source: cr.source, botName, quota: await lineQuota(cr.token) }); }
-  catch { return json({ configured: true, source: cr.source, botName, quota: null }); }
+  try { return json({ configured: true, source: cr.source, botName, webhookUrl, quota: await lineQuota(cr.token) }); }
+  catch { return json({ configured: true, source: cr.source, botName, webhookUrl, quota: null }); }
 }
 
 // ── AI プロキシ（既定: Gemini / 切替: Claude）。キーはサーバー秘匿。要認証 ──

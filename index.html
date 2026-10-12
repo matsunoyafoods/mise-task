@@ -1049,9 +1049,17 @@ function LineBotSetupModal({storeId, current, notify, onClose, onSaved}) {
           <li>LINE Official Account Managerで、この店舗の公式アカウントを作る</li>
           <li>設定 →「Messaging API」→「Messaging APIを利用する」</li>
           <li>設定 →「アカウント設定」→「グループ・複数人トークへの参加を許可する」</li>
-          <li>「応答設定」で、応答メッセージをオフ・Webhookをオン</li>
-          <li>LINE Developersでこのbotを開き、「チャネルシークレット」と「チャネルアクセストークン（長期）」をコピー</li>
+          <li>「応答設定」で、応答メッセージをオフにする</li>
+          <li>LINE Developersでこのbotを開き、「Messaging API設定」の「Webhook URL」に下のURLを貼って、「Webhookの利用」をオン（「検証」は押さなくてOK）</li>
+          <li>「チャネル基本設定」の「チャネルシークレット」と、「Messaging API設定」の「チャネルアクセストークン（長期）」をコピーして、下に貼る</li>
         </ol>
+        {current?.webhookUrl && (
+          <div style={{display:"flex",alignItems:"center",gap:8,marginTop:10}}>
+            <code style={{flex:1,fontSize:11,background:"#FFFFFF",border:"1px solid #EDE7DD",borderRadius:8,padding:"8px",wordBreak:"break-all",color:"#2C2C2A"}}>{current.webhookUrl}</code>
+            <button onClick={()=>copyToClipboard(current.webhookUrl, notify, "✓ Webhook URLをコピーしました")}
+              style={{padding:"8px 12px",background:"#E8792F",color:"#fff",border:"none",borderRadius:999,fontSize:13,fontWeight:800,cursor:"pointer",whiteSpace:"nowrap"}}>コピー</button>
+          </div>
+        )}
       </div>
       <div style={{fontSize:13,fontWeight:700,color:"#45433F",marginBottom:6}}>チャネルアクセストークン（長期）</div>
       <input type="password" autoComplete="off" value={token} onChange={e=>setToken(e.target.value)} placeholder="ここに貼り付け" style={inputS}/>
