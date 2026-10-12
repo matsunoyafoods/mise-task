@@ -3198,13 +3198,15 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
     notify(`✓ ${sup.name} への発注を記録しました。${methodLabels}で送信してください`);
 
     setSelectedItems({});
-    setSentInfo({sup, items, text: buildOrderText(sup, items), storeId: storeFilter || null});
+    // 本部が「全店」表示でも、発注を記録した店舗のbotで送れるように店舗番号を渡す
+    setSentInfo({sup, items, text: buildOrderText(sup, items, newOrder.storeId), storeId: newOrder.storeId ?? null});
     setConfirmOrder(null);
   };
 
   // 発注内容をテキスト化
-  const buildOrderText = (sup, items) => {
-    const storeName = (INITIAL_STORES||[]).find(s=>String(s.id)===String(storeFilter||""))?.name;
+  const buildOrderText = (sup, items, storeId) => {
+    const sid = storeId ?? storeFilter;
+    const storeName = (INITIAL_STORES||[]).find(s=>String(s.id)===String(sid ?? ""))?.name;
     const lines = [`【発注書】${new Date().toLocaleDateString("ja-JP")}`, `${sup.name} 御中`, ...(storeName?[`発注元: ${storeName}`]:[]), ""];
     items.forEach(i => lines.push(`・${i.name}  ${getQty(i).toLocaleString()}${orderUnitOf(i)}${byCase(i)?`（約${(getQty(i)*caseSize(i)).toLocaleString()}${i.unit}）`:""}`));
     lines.push("", "以上、よろしくお願いいたします。");
@@ -3220,7 +3222,13 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
     return methods.map(m => {
       if (m==="email"     && sup.contact)     return {method:m, url:`mailto:${sup.contact}?subject=${subj}&body=${enc}`,       label:"メールを開いて送る"};
       // LINE: 発注文を入れた状態でLINEを開き、送る相手（業者さんのトーク）を選んで送信する。個人のLINEでも使える
-      if (m==="line")                         return {method:m, url:`line://msg/text/${enc}`, webUrl:`https://line.me/R/msg/text/?${enc}`, label:"LINEアプリで送る"};
+      if (m==="line") {
+        // スマホはLINEアプリを直接開く。パソコンは line:// が使えないため、LINEのページ（パソコン版LINEにつながる）を開く
+        const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent||"");
+        return isMobile
+          ? {method:m, url:`line://msg/text/${enc}`, webUrl:`https://line.me/R/msg/text/?${enc}`, label:"LINEアプリで送る"}
+          : {method:m, url:`https://line.me/R/msg/text/?${enc}`, label:"LINEで送る（手動）", newTab:true};
+      }
       if (m==="instagram" && sup.instagramId) return {method:m, url:`https://www.instagram.com/${sup.instagramId.replace("@","")}/`, label:"Instagramを開く"};
       if (m==="twitter"   && sup.twitterId)   return {method:m, url:`https://x.com/${sup.twitterId.replace("@","")}/`, label:"X(Twitter)を開く"};
       if (m==="other"     && sup.otherDesc)   return {method:m, url:null, label:sup.otherDesc};
@@ -3311,7 +3319,7 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
                 lk.url ? (
                   <div key={lk.method}>
                     <a href={lk.url} onClick={()=>{ if(lk.method==="instagram"||lk.method==="twitter") copyText(); }}
-                      target={(lk.method==="instagram"||lk.method==="twitter")?"_blank":undefined} rel="noreferrer"
+                      target={(lk.method==="instagram"||lk.method==="twitter"||lk.newTab)?"_blank":undefined} rel="noreferrer"
                       style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"15px",background:MCOL[lk.method]||"#5F5D58",color:"#fff",borderRadius:12,fontSize:16,fontWeight:800,textDecoration:"none"}}>
                       {ICON[lk.method]||"📝"} {lk.label}
                     </a>
