@@ -3261,9 +3261,10 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
   const executeSendOrder = async () => {
     if (!confirmOrder) return;
     const {supplierId, sup, items, counts} = confirmOrder;
-    if (!items.every(i=>counts && String(counts[i.id]??"").trim()!=="")) { notify("今の在庫をすべて入れてください","warn"); return; }
+    if (!items.filter(i=>i.countOnOrder).every(i=>counts && String(counts[i.id]??"").trim()!=="")) { notify("今の在庫を入れてください","warn"); return; }
     // 仕込みなどで減らない商品もあるため、発注時に数えた実数で在庫を合わせる
-    setInventory(prev=>prev.map(it=>{ const c = counts[it.id]; return (c!==undefined && String(c).trim()!=="") ? {...it, stock: Math.max(0, Number(c)||0)} : it; }));
+    const cnt = counts || {};
+    setInventory(prev=>prev.map(it=>{ const c = items.some(x=>x.id===it.id && x.countOnOrder) ? cnt[it.id] : undefined; return (c!==undefined && String(c).trim()!=="") ? {...it, stock: Math.max(0, Number(c)||0)} : it; }));
     const newOrder = {
       id:"o"+Date.now(), supplierId, storeId:storeFilter||1,
       items:items.map(i=>({itemId:i.id,name:i.name,qty:getQty(i),unit:orderUnitOf(i),unitPrice:i.unitPrice,byCase:byCase(i),caseSize:caseSize(i),baseUnit:i.unit})),
@@ -3450,7 +3451,7 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
               })}
             </div>
           </div>
-          <div style={{fontSize:13,color:"#5F5D58",lineHeight:1.6,marginBottom:6}}>お店にある<b>今の在庫</b>を数えて入れてください。アプリの在庫もこの数に合わせます。</div>
+          {confirmOrder.items.some(i=>i.countOnOrder) && <div style={{fontSize:13,color:"#5F5D58",lineHeight:1.6,marginBottom:6}}>「今の在庫」の欄がある商品は、お店の数を数えて入れてください。アプリの在庫もこの数に合わせます。</div>}
           {confirmOrder.items.map(i=>{
             const cv = confirmOrder.counts?.[i.id] ?? "";
             return (
@@ -3459,21 +3460,21 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
                 <span style={{fontSize:14,color:"#45433F",fontWeight:700}}>{i.name}</span>
                 <span style={{fontSize:15,fontWeight:700,color:"#E85D04",fontFamily:"monospace"}}>発注 {getQty(i).toLocaleString()}{orderUnitOf(i)}{byCase(i)&&<span style={{fontSize:12,color:"#5F5D58",fontWeight:600}}> （約{(getQty(i)*caseSize(i)).toLocaleString()}{i.unit}）</span>}</span>
               </div>
-              <div style={{display:"flex",alignItems:"center",gap:8,marginTop:6,flexWrap:"wrap"}}>
+              {i.countOnOrder && <div style={{display:"flex",alignItems:"center",gap:8,marginTop:6,flexWrap:"wrap"}}>
                 <span style={{fontSize:13,color:"#45433F"}}>今の在庫</span>
                 <input type="number" inputMode="decimal" min="0" value={cv} placeholder="数を入力"
                   onChange={e=>{ const v=e.target.value; setConfirmOrder(p=>({...p,counts:{...(p.counts||{}),[i.id]:v}})); }}
                   style={{width:100,padding:"6px 8px",background:"#FFFFFF",border:"2px solid "+(String(cv).trim()===""?"#F6CFAF":"#C0DD97"),borderRadius:8,fontSize:15,textAlign:"right",color:"#2C2C2A"}}/>
                 <span style={{fontSize:13,color:"#45433F"}}>{i.unit}</span>
                 <span style={{fontSize:12,color:"#6E6C66"}}>（アプリ上: {Number(i.stock||0).toLocaleString()}{i.unit}）</span>
-              </div>
+              </div>}
             </div>
             );
           })}
           <div style={{marginTop:20}}>
             {(()=>{
               const direct = DIRECT_ORDER_METHODS.includes(primaryMethodOf(confirmOrder.sup));
-              const countsReady = confirmOrder.items.every(i=>{ const v=confirmOrder.counts?.[i.id]; return v!==undefined && String(v).trim()!=="" && Number(v)>=0; });
+              const countsReady = confirmOrder.items.filter(i=>i.countOnOrder).every(i=>{ const v=confirmOrder.counts?.[i.id]; return v!==undefined && String(v).trim()!=="" && Number(v)>=0; });
               return (
                 <div style={{display:"flex",flexDirection:"column",gap:8}}>
                   <div style={{fontSize:13,color:"#5F5D58",lineHeight:1.6,marginBottom:2}}>
@@ -3481,7 +3482,7 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
                       ? <>{confirmOrder.sup.appName ? "「"+confirmOrder.sup.appName+"」" : "業者さんのアプリなど"}で発注したら押してください。<b>発注済み</b>になり、届いたら検品で確認できます。</>
                       : "まず発注を記録します。次の画面で、LINE・メールなどを開いて業者さんに送ります。"}
                   </div>
-                  {!countsReady && <div style={{fontSize:13,color:"#C2410C"}}>すべての商品の「今の在庫」を入れると押せます。</div>}
+                  {!countsReady && <div style={{fontSize:13,color:"#C2410C"}}>「今の在庫」を入れると押せます。</div>}
                   <button onClick={executeSendOrder} disabled={!countsReady}
                     style={{padding:"15px",background:"#E8792F",color:"#fff",border:"none",borderRadius:12,fontSize:16,fontWeight:800,cursor:countsReady?"pointer":"not-allowed",opacity:countsReady?1:0.45}}>
                     {direct ? "✓ 発注済みにする" : "✓ 発注を記録する"}
@@ -4049,7 +4050,7 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
 
   const openNew = () => {
     setEditItem(null);
-    setForm({name:"",category:"調味料",storageGroup:storageGroupOptions[0],unit:"g",customUnit:"",stock:"0",minStock:"500",orderQty:"1000",supplierId:"",unitPrice:"0",bagSize:"",bagUnit:"袋",orderByCase:false,demandFlex:true});
+    setForm({name:"",category:"調味料",storageGroup:storageGroupOptions[0],unit:"g",customUnit:"",stock:"0",minStock:"500",orderQty:"1000",supplierId:"",unitPrice:"0",bagSize:"",bagUnit:"袋",orderByCase:false,demandFlex:true,countOnOrder:false});
     setShowBag(false);
     setShowForm(true);
   };
@@ -4063,7 +4064,8 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
       unitPrice:String(item.unitPrice),
       bagSize:String(item.bagSize||""), bagUnit:item.bagUnit||"袋",
       orderByCase: !!item.orderByCase,
-      demandFlex: item.demandFlex!==false
+      demandFlex: item.demandFlex!==false,
+      countOnOrder: !!item.countOnOrder
     });
     setShowBag(!!item.bagSize);
     setShowForm(true);
@@ -4080,6 +4082,7 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
       bagUnit: form.bagSize ? form.bagUnit : null,
       orderByCase: !!(form.bagSize && form.orderByCase),
       demandFlex: form.demandFlex!==false,
+      countOnOrder: !!form.countOnOrder,
     };
     if (editItem) {
       setInventory(p=>p.map(i=>i.id===editItem.id ? {...i,...payload} : i));
@@ -4229,6 +4232,16 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
             <button type="button" onClick={()=>setForm(p=>({...p,demandFlex:!(p.demandFlex!==false)}))}
               style={{flexShrink:0,width:46,height:26,borderRadius:13,border:"none",cursor:"pointer",background:form.demandFlex!==false?"#16a34a":"#ECE9E1",position:"relative",transition:"background .2s"}}>
               <span style={{position:"absolute",top:3,left:form.demandFlex!==false?23:3,width:20,height:20,borderRadius:10,background:"#fff",transition:"left .2s"}}/>
+            </button>
+          </div>
+          <div style={{marginTop:10,marginBottom:14,background:"#FFFFFF",border:"1px solid #E4E0D6",borderRadius:10,padding:"12px 14px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+            <div>
+              <div style={{fontSize:13,fontWeight:700,color:"#2C2C2A"}}>発注するときに今の在庫を数える</div>
+              <div style={{fontSize:12,color:"#5F5D58",marginTop:2,lineHeight:1.5}}>ラップ・紅生姜など、仕込みでは減らない商品はONに。発注確認で今の在庫を入れると、アプリの在庫をその数に合わせます。</div>
+            </div>
+            <button type="button" onClick={()=>setForm(p=>({...p,countOnOrder:!p.countOnOrder}))}
+              style={{flexShrink:0,width:46,height:26,borderRadius:13,border:"none",cursor:"pointer",background:form.countOnOrder?"#16a34a":"#ECE9E1",position:"relative",transition:"background .2s"}}>
+              <span style={{position:"absolute",top:3,left:form.countOnOrder?23:3,width:20,height:20,borderRadius:10,background:"#fff",transition:"left .2s"}}/>
             </button>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
