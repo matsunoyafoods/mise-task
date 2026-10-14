@@ -4114,7 +4114,7 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
         <Bar v={Number(item.stock||0)} max={Number(item.minStock||0)*3} color={isLow?"#B42318":"#0077B6"} h={5}/>
         <div style={{display:"flex",justifyContent:"space-between",marginTop:6}}>
           <span style={{fontSize:12,color:"#6E6C66"}}>最低: {Number(item.minStock||0).toLocaleString()}{item.unit}{Number(item.bagSize)>0?` (${Math.floor(Number(item.minStock||0)/Number(item.bagSize))}${item.bagUnit})`:""}</span>
-          <span style={{fontSize:12,color:"#6E6C66"}}>¥{Number(item.unitPrice||0).toLocaleString()}/{item.unit}</span>
+          <span style={{fontSize:12,color:"#6E6C66"}}>¥{Number(item.unitPrice||0).toLocaleString()}/{(item.orderByCase && Number(item.bagSize)>0) ? "1"+(item.bagUnit||"ケース") : item.unit}</span>
         </div>
       </div>
     );
