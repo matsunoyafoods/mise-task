@@ -3694,7 +3694,7 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
                       <Chip label={SEND_METHOD_LABELS[order.sendMethod]} color={mc} bg={mc+"11"}/>
                       <Chip label={order.inspected?"✓ 検品済":"配送待ち"} color={order.inspected?"#2F7A1F":"#C2410C"} bg={order.inspected?"#EAF3DE":"#FDF0E6"}/>
                     </div>
-                    <div style={{fontSize:13,color:"#5F5D58"}}>送信: {order.sentAt?.slice(0,16).replace("T"," ")}{order.deliveryDate ? `　／　📅 納品希望日: ${fmtDeliv(order.deliveryDate)}` : ""}</div>
+                    <div style={{fontSize:13,color:"#5F5D58"}}>送信: {order.sentAt ? new Date(new Date(order.sentAt).getTime()+9*3600*1000).toISOString().slice(0,16).replace("T"," ") : ""}{order.deliveryDate ? `　／　📅 納品希望日: ${fmtDeliv(order.deliveryDate)}` : ""}</div>
                   </div>
                   <div style={{textAlign:"right"}}>
                     <div style={{fontSize:20,fontWeight:800,color:"#F48C06",fontFamily:"monospace"}}>¥{total.toLocaleString()}</div>
