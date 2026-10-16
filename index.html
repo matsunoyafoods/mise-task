@@ -3222,6 +3222,8 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
   const level = dayLevelOf(targetDay, dc);
   const WD = ["日","月","火","水","木","金","土"];
   const wd = ds => WD[new Date(ds+"T00:00:00").getDay()];
+  // 納品希望日の表示（例: 10/17(金)）
+  const fmtDeliv = ds => { if (!ds) return ""; const d = new Date(ds+"T00:00:00"); return isNaN(d) ? ds : `${d.getMonth()+1}/${d.getDate()}(${WD[d.getDay()]})`; };
   const effMin   = it => (it.demandFlex!==false) ? Math.ceil(Number(it.minStock||0)*mult) : Number(it.minStock||0);
   const effOrder = it => (it.demandFlex!==false) ? Math.round(Number(it.orderQty||0)*mult) : Number(it.orderQty||0);
   // ケース発注（発注=ケース／在庫=個）。bagSize=1ケースの目安個数, bagUnit=ケース名
@@ -3256,11 +3258,13 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
     const sup = suppliers.find(s=>s.id===supplierId);
     const items = [...(grouped[supplierId]||[]).filter(i=>selectedItems[i.id]!==false), ...pickedExtras(supplierId)];
     if (!items.length) { notify("発注商品を選択してください","warn"); return; }
-    setConfirmOrder({supplierId, sup, items});
+    setConfirmOrder({supplierId, sup, items, deliveryDate: targetDay, comment: ""});
   };
   const executeSendOrder = async () => {
     if (!confirmOrder) return;
     const {supplierId, sup, items, counts} = confirmOrder;
+    const deliveryDate = confirmOrder.deliveryDate || "";
+    const comment = String(confirmOrder.comment || "").trim();
     if (!items.filter(i=>i.countOnOrder).every(i=>counts && String(counts[i.id]??"").trim()!=="")) { notify("今の在庫を入れてください","warn"); return; }
     // 仕込みなどで減らない商品もあるため、発注時に数えた実数で在庫を合わせる
     const cnt = counts || {};
@@ -3269,6 +3273,7 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
       id:"o"+Date.now(), supplierId, storeId:storeFilter||1,
       items:items.map(i=>({itemId:i.id,name:i.name,qty:getQty(i),unit:orderUnitOf(i),unitPrice:i.unitPrice,byCase:byCase(i),caseSize:caseSize(i),baseUnit:i.unit})),
       status:"sent", sentAt:new Date().toISOString(), deliveredAt:null,
+      deliveryDate: deliveryDate || null, comment: comment || "",
       sendMethod:sup.sendMethod || sup.orderMethods?.[0] || "other", inspected:false, inspectionLog:[],
     };
     setOrders(p=>[newOrder,...p]);
@@ -3288,16 +3293,18 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
       return;
     }
     // 本部が「全店」表示でも、発注を記録した店舗のbotで送れるように店舗番号を渡す
-    setSentInfo({sup, items, text: buildOrderText(sup, items, newOrder.storeId), storeId: newOrder.storeId ?? null});
+    setSentInfo({sup, items, text: buildOrderText(sup, items, newOrder.storeId, {deliveryDate, comment}), storeId: newOrder.storeId ?? null});
     setConfirmOrder(null);
   };
 
   // 発注内容をテキスト化
-  const buildOrderText = (sup, items, storeId) => {
+  const buildOrderText = (sup, items, storeId, extra = {}) => {
     const sid = storeId ?? storeFilter;
     const storeName = (INITIAL_STORES||[]).find(s=>String(s.id)===String(sid ?? ""))?.name;
-    const lines = [`【発注書】${new Date().toLocaleDateString("ja-JP")}`, `${sup.name} 御中`, ...(storeName?[`発注元: ${storeName}`]:[]), ""];
+    const lines = [`【発注書】${new Date().toLocaleDateString("ja-JP")}`, `${sup.name} 御中`, ...(storeName?[`発注元: ${storeName}`]:[]),
+      ...(extra.deliveryDate?[`納品希望日: ${fmtDeliv(extra.deliveryDate)}`]:[]), ""];
     items.forEach(i => lines.push(`・${i.name}  ${getQty(i).toLocaleString()}${orderUnitOf(i)}${byCase(i)?`（約${(getQty(i)*caseSize(i)).toLocaleString()}${i.unit}）`:""}`));
+    if (extra.comment) lines.push("", "【コメント】", extra.comment);
     lines.push("", "以上、よろしくお願いいたします。");
     return lines.join("\n");
   };
@@ -3451,6 +3458,16 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
               })}
             </div>
           </div>
+          <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center",marginBottom:10}}>
+            <span style={{fontSize:14,fontWeight:700,color:"#2C2C2A"}}>📅 納品希望日</span>
+            <input type="date" value={confirmOrder.deliveryDate||""} onChange={e=>{ const v=e.target.value; setConfirmOrder(p=>({...p,deliveryDate:v})); }}
+              style={{padding:"8px 10px",background:"#FFFFFF",border:"1px solid #E4E0D6",borderRadius:8,fontSize:15,color:"#2C2C2A"}}/>
+            {confirmOrder.deliveryDate && <span style={{fontSize:13,color:"#5F5D58"}}>{fmtDeliv(confirmOrder.deliveryDate)}</span>}
+          </div>
+          <div style={{fontSize:14,fontWeight:700,color:"#2C2C2A",marginBottom:6}}>💬 コメント（任意）</div>
+          <textarea value={confirmOrder.comment||""} onChange={e=>{ const v=e.target.value; setConfirmOrder(p=>({...p,comment:v})); }}
+            rows={2} placeholder="例: 午前中に納品お願いします / 前回の欠品分も一緒に"
+            style={{width:"100%",padding:"10px 12px",background:"#FFFFFF",border:"1px solid #E4E0D6",borderRadius:10,fontSize:15,lineHeight:1.5,color:"#2C2C2A",fontFamily:"inherit",resize:"vertical",marginBottom:12}}/>
           {confirmOrder.items.some(i=>i.countOnOrder) && <div style={{fontSize:13,color:"#5F5D58",lineHeight:1.6,marginBottom:6}}>「今の在庫」の欄がある商品は、お店の数を数えて入れてください。アプリの在庫もこの数に合わせます。</div>}
           {confirmOrder.items.map(i=>{
             const cv = confirmOrder.counts?.[i.id] ?? "";
@@ -3677,7 +3694,7 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
                       <Chip label={SEND_METHOD_LABELS[order.sendMethod]} color={mc} bg={mc+"11"}/>
                       <Chip label={order.inspected?"✓ 検品済":"配送待ち"} color={order.inspected?"#2F7A1F":"#C2410C"} bg={order.inspected?"#EAF3DE":"#FDF0E6"}/>
                     </div>
-                    <div style={{fontSize:13,color:"#5F5D58"}}>送信: {order.sentAt?.slice(0,16).replace("T"," ")}</div>
+                    <div style={{fontSize:13,color:"#5F5D58"}}>送信: {order.sentAt?.slice(0,16).replace("T"," ")}{order.deliveryDate ? `　／　📅 納品希望日: ${fmtDeliv(order.deliveryDate)}` : ""}</div>
                   </div>
                   <div style={{textAlign:"right"}}>
                     <div style={{fontSize:20,fontWeight:800,color:"#F48C06",fontFamily:"monospace"}}>¥{total.toLocaleString()}</div>
@@ -3692,6 +3709,7 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
                 <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                   {order.items.map((i,idx)=><Chip key={idx} label={`${i.name} ${i.qty.toLocaleString()}${i.unit}`} color="#5F5D58" bg="#ECE9E1"/>)}
                 </div>
+                {order.comment && <div style={{marginTop:10,background:"#FBFAF7",border:"1px solid #EDE7DD",borderRadius:10,padding:"8px 12px",fontSize:14,color:"#2C2C2A",whiteSpace:"pre-wrap"}}>💬 {order.comment}</div>}
               </div>
             );
           })}
