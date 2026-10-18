@@ -445,6 +445,164 @@ const Bar = ({v,max,color="#E85D04",h=4}) => (
 );
 
 // お店アカウント端末で、名前を選んでPINで切り替えるモーダル
+
+// ─── 多言語表示（ミャンマー語・ベトナム語・インドネシア語・ネパール語）─────────────
+//   画面に出ている日本語を、選んだ言葉に置き換えて表示する（データは日本語のまま。発注文なども日本語のまま）
+//   ① 下の辞書（確認済みの訳）  ② 辞書に無い言葉（タスク名など）はAIで訳して、この端末に覚えておく
+const LANGS = [["ja","日本語"],["my","မြန်မာ"],["vi","Tiếng Việt"],["id","Bahasa Indonesia"],["ne","नेपाली"]];
+const LANG_AI_NAME = {my:"Burmese (Myanmar language, Unicode)", vi:"Vietnamese", id:"Indonesian", ne:"Nepali (Devanagari)"};
+const I18N_DICT = {"my": {"今日のやること": "ယနေ့ လုပ်ရန်", "今日の仕込み・そうじ": "ယနေ့ ကြိုတင်ပြင်ဆင်မှု・သန့်ရှင်းရေး", "開店・閉店チェック": "ဆိုင်ဖွင့်・ပိတ် စစ်ဆေးမှု", "毎日の開け閉めの確認": "နေ့စဉ် ဖွင့်/ပိတ် စစ်ဆေးမှု", "検品": "ပစ္စည်းလက်ခံ စစ်ဆေးမှု", "届いた荷物の数を確かめる": "ရောက်လာသော ပစ္စည်းအရေအတွက် စစ်ရန်", "ログインQR": "လော့ဂ်အင် QR", "スタッフのスマホでログイン": "ဝန်ထမ်းဖုန်းဖြင့် လော့ဂ်အင်ဝင်ရန်", "お店の数字": "ဆိုင်၏ ကိန်းဂဏန်းများ", "仕込み・そうじ": "ကြိုတင်ပြင်ဆင်မှု・သန့်ရှင်းရေး", "在庫・棚卸し": "စတော့・စာရင်းစစ်", "発注": "အော်ဒါမှာယူမှု", "スタッフ": "ဝန်ထမ်း", "名前とPINで切り替え": "အမည်နှင့် PIN ဖြင့် ပြောင်းရန်", "さんで操作中": "အသုံးပြုနေသည်", "お店に戻る": "ဆိုင်မျက်နှာပြင်သို့ ပြန်ရန်", "ログアウト": "ထွက်ရန်", "だれが使いますか？": "ဘယ်သူ အသုံးပြုမလဲ？", "名前を選んで、自分のPINを入れてください。": "သင့်အမည်ကို ရွေးပြီး ကိုယ်ပိုင် PIN ကို ထည့်ပါ။", "4けたのPINを入れてください": "ဂဏန်း ၄ လုံးပါ PIN ကို ထည့်ပါ", "PINが違います": "PIN မှားနေပါသည်", "このまま切り替える": "ဒီအတိုင်း ပြောင်းရန်", "← 名前の選択に戻る": "← အမည်ရွေးရန် ပြန်သွားရန်", "この人はPINがまだ設定されていません。": "ဤသူအတွက် PIN မသတ်မှတ်ရသေးပါ။", "店長がスタッフ管理でPINを設定してください。": "ဆိုင်မန်နေဂျာက ဝန်ထမ်းစီမံမှုတွင် PIN သတ်မှတ်ပေးပါ။", "キャンセル": "မလုပ်တော့ပါ", "戻る": "နောက်သို့", "閉じる": "ပိတ်ရန်", "保存する": "သိမ်းရန်", "今日": "ယနေ့", "明日": "မနက်ဖြန်", "明後日": "သဘက်ခါ", "3日後": "၃ ရက်အကြာ", "今日の進捗": "ယနေ့ တိုးတက်မှု", "未完了": "မပြီးသေး", "完了": "ပြီးပြီ", "仕込み": "ကြိုတင်ပြင်ဆင်မှု", "クリーン": "သန့်ရှင်းရေး", "完了したタスクがここに入ります": "ပြီးဆုံးသော အလုပ်များ ဤနေရာတွင် ပေါ်ပါမည်", "＋ タスクを追加": "＋ အလုပ်ထည့်ရန်", "タップで完了 ／ ＋ボタンまたは左メニューから追加 ／ 🗑 で削除": "နှိပ်လျှင် ပြီးဆုံး ／ ＋ ခလုတ် သို့မဟုတ် ဘယ်ဘက်မီနူးမှ ထည့်ရန် ／ 🗑 ဖြင့် ဖျက်ရန်", "いつものタスクから選ぶ（タップで追加）": "အမြဲလုပ်နေကျ အလုပ်များမှ ရွေးရန် (နှိပ်လျှင် ထည့်မည်)", "新しく作る": "အသစ်ပြုလုပ်ရန်", "タスク名": "အလုပ်အမည်", "締切時刻": "နောက်ဆုံးအချိန်", "担当者": "တာဝန်ခံ", "追加する": "ထည့်ရန်", "✓ 完了": "✓ ပြီးပြီ", "✓ 完了する": "✓ ပြီးဆုံးကြောင်း မှတ်ရန်", "完了する": "ပြီးဆုံးကြောင်း မှတ်ရန်", "削除": "ဖျက်ရန်", "編集": "ပြင်ရန်", "仕込み完了確認": "ကြိုတင်ပြင်ဆင်မှု ပြီးဆုံးကြောင်း အတည်ပြုခြင်း", "仕込みはいかがでしたか？": "ကြိုတင်ပြင်ဆင်မှု ဘယ်လိုရှိလဲ？", "ワンタップで完了": "တစ်ချက်နှိပ်ရုံဖြင့် ပြီးဆုံး", "✅ 登録の分量で完了": "✅ မှတ်ထားသော ပမာဏအတိုင်း ပြီးဆုံး", "✏️ 量を変えて完了": "✏️ ပမာဏ ပြောင်းပြီး ပြီးဆုံး", "今日つくった量を入力": "ယနေ့ ပြုလုပ်ခဲ့သော ပမာဏကို ထည့်ပါ", "実際の使用量": "အမှန်တကယ် သုံးခဲ့သော ပမာဏ", "この量が在庫から差し引かれます": "ဤပမာဏကို စတော့မှ နုတ်ပါမည်", "担当者を選んでください（複数選択可）": "တာဝန်ခံကို ရွေးပါ (အများအပြား ရွေးနိုင်သည်)", "✓ クリーン完了！": "✓ သန့်ရှင်းရေး ပြီးပါပြီ！", "✓ 仕込み完了！在庫を更新しました": "✓ ကြိုတင်ပြင်ဆင်မှု ပြီးပါပြီ！ စတော့ကို ပြင်ဆင်ပြီးပါပြီ", "🎉 全完了！": "🎉 အားလုံး ပြီးပါပြီ！", "タスクなし": "အလုပ် မရှိပါ", "担当者不明で完了": "တာဝန်ခံ မသိဘဲ ပြီးဆုံးမည်", "担当者不明のまま完了": "တာဝန်ခံ မသိဘဲ ပြီးဆုံးမည်", "✓ 担当者を選択（複数可）": "✓ တာဝန်ခံ ရွေးရန် (အများအပြား ရွေးနိုင်)", "🌅 開店チェック": "🌅 ဆိုင်ဖွင့် စစ်ဆေးမှု", "🌙 閉店チェック": "🌙 ဆိုင်ပိတ် စစ်ဆေးမှု", "開店": "ဆိုင်ဖွင့်", "閉店": "ဆိုင်ပိတ်", "✅ 正常": "✅ ပုံမှန်", "✓ 正常": "✓ ပုံမှန်", "⚠️ 異常あり": "⚠️ ပုံမှန်မဟုတ်ပါ", "⚠ 異常報告": "⚠ ပြဿနာ အစီရင်ခံရန်", "結果はいかがでしたか？": "ရလဒ် ဘယ်လိုရှိလဲ？", "記録する": "မှတ်တမ်းတင်ရန်", "数値を入力": "ကိန်းဂဏန်း ထည့်ရန်", "数値を入力してください": "ကိန်းဂဏန်း ထည့်ပါ", "正常範囲": "ပုံမှန် အတိုင်းအတာ", "🌅 開店チェック完了！承認へ →": "🌅 ဆိုင်ဖွင့်စစ်ဆေးမှု ပြီးပါပြီ！ အတည်ပြုရန် →", "🌙 閉店チェック完了！承認へ →": "🌙 ဆိုင်ပိတ်စစ်ဆေးမှု ပြီးပါပြီ！ အတည်ပြုရန် →", "🌅 開店承認": "🌅 ဆိုင်ဖွင့် အတည်ပြုချက်", "🌙 閉店承認": "🌙 ဆိုင်ပိတ် အတည်ပြုချက်", "チェックを実施したスタッフを選択": "စစ်ဆေးခဲ့သော ဝန်ထမ်းကို ရွေးပါ", "最後に確認したスタッフが承認します。": "နောက်ဆုံး စစ်ဆေးခဲ့သော ဝန်ထမ်းက အတည်ပြုပါမည်။", "別のスタッフが承認する場合": "အခြား ဝန်ထမ်းက အတည်ပြုမည်ဆိုလျှင်", "進捗": "တိုးတက်မှု", "温度確認": "အပူချိန် စစ်ဆေးမှု", "衛生確認": "သန့်ရှင်းမှု စစ်ဆေးမှု", "安全確認": "ဘေးကင်းမှု စစ်ဆေးမှု", "オープン準備": "ဆိုင်ဖွင့်ရန် ပြင်ဆင်မှု", "キッチン": "မီးဖိုချောင်", "ホール": "စားသောက်ခန်း", "レジ・売上": "ငွေကောင်တာ・ရောင်းအား", "その他": "အခြား", "⚠️ 実際の数値を入力してください": "⚠️ အမှန်တကယ် ကိန်းဂဏန်းကို ထည့်ပါ", "数値異常": "ကိန်းဂဏန်း ပုံမှန်မဟုတ်ပါ", "⚠ 基準範囲外です。本部へ報告されます。": "⚠ စံအတိုင်းအတာ ပြင်ပ ဖြစ်နေသည်။ ရုံးချုပ်သို့ အစီရင်ခံပါမည်။", "もう一度入力": "ထပ်မံ ထည့်ရန်", "この数値で完了": "ဤကိန်းဂဏန်းဖြင့် ပြီးဆုံး", "⚠ 異常を記録しました": "⚠ ပြဿနာကို မှတ်တမ်းတင်ပြီးပါပြီ", "📦 検品チェック": "📦 ပစ္စည်းလက်ခံ စစ်ဆေးမှု", "✓ 検品完了": "✓ စစ်ဆေးမှု ပြီးပါပြီ", "⚠ 差異記録して完了": "⚠ ကွာခြားချက်ကို မှတ်ပြီး ပြီးဆုံး", "⚠ 数量差異があります。": "⚠ အရေအတွက် ကွာခြားမှု ရှိပါသည်။", "検品する →": "စစ်ဆေးရန် →", "届いた荷物の数を確かめて、在庫に反映します": "ရောက်လာသော ပစ္စည်းအရေအတွက်ကို စစ်ပြီး စတော့တွင် ထည့်သွင်းပါမည်", "スタッフ用ログインQR": "ဝန်ထမ်းအတွက် လော့ဂ်အင် QR", "ログインQRは、お店のタブレット（店長のメールでログインした端末）で表示してください。": "လော့ဂ်အင် QR ကို ဆိုင်၏ တက်ဘလက် (မန်နေဂျာ အီးမေးလ်ဖြင့် ဝင်ထားသော စက်) တွင် ပြပါ။"}, "vi": {"今日のやること": "Việc hôm nay", "今日の仕込み・そうじ": "Sơ chế・dọn dẹp hôm nay", "開店・閉店チェック": "Kiểm tra mở・đóng cửa", "毎日の開け閉めの確認": "Kiểm tra mở và đóng cửa hằng ngày", "検品": "Kiểm hàng", "届いた荷物の数を確かめる": "Kiểm số lượng hàng đã nhận", "ログインQR": "QR đăng nhập", "スタッフのスマホでログイン": "Đăng nhập bằng điện thoại nhân viên", "お店の数字": "Số liệu cửa hàng", "仕込み・そうじ": "Sơ chế・dọn dẹp", "在庫・棚卸し": "Tồn kho・kiểm kê", "発注": "Đặt hàng", "スタッフ": "Nhân viên", "名前とPINで切り替え": "Đổi người bằng tên và PIN", "さんで操作中": "đang sử dụng", "お店に戻る": "Về màn hình cửa hàng", "ログアウト": "Đăng xuất", "だれが使いますか？": "Ai đang sử dụng?", "名前を選んで、自分のPINを入れてください。": "Chọn tên của bạn và nhập mã PIN.", "4けたのPINを入れてください": "Nhập mã PIN 4 số", "PINが違います": "Mã PIN không đúng", "このまま切り替える": "Chuyển luôn", "← 名前の選択に戻る": "← Quay lại chọn tên", "この人はPINがまだ設定されていません。": "Người này chưa đặt mã PIN.", "店長がスタッフ管理でPINを設定してください。": "Quản lý cửa hàng hãy đặt PIN trong mục quản lý nhân viên.", "キャンセル": "Hủy", "戻る": "Quay lại", "閉じる": "Đóng", "保存する": "Lưu", "今日": "Hôm nay", "明日": "Ngày mai", "明後日": "Ngày kia", "3日後": "3 ngày sau", "今日の進捗": "Tiến độ hôm nay", "未完了": "Chưa xong", "完了": "Đã xong", "仕込み": "Sơ chế", "クリーン": "Dọn dẹp", "完了したタスクがここに入ります": "Việc đã xong sẽ hiện ở đây", "＋ タスクを追加": "＋ Thêm việc", "タップで完了 ／ ＋ボタンまたは左メニューから追加 ／ 🗑 で削除": "Chạm để hoàn thành ／ Thêm bằng nút ＋ hoặc menu bên trái ／ Xóa bằng 🗑", "いつものタスクから選ぶ（タップで追加）": "Chọn từ việc thường làm (chạm để thêm)", "新しく作る": "Tạo mới", "タスク名": "Tên công việc", "締切時刻": "Hạn chót", "担当者": "Người phụ trách", "追加する": "Thêm", "✓ 完了": "✓ Xong", "✓ 完了する": "✓ Hoàn thành", "完了する": "Hoàn thành", "削除": "Xóa", "編集": "Sửa", "仕込み完了確認": "Xác nhận hoàn thành sơ chế", "仕込みはいかがでしたか？": "Sơ chế thế nào rồi?", "ワンタップで完了": "Hoàn thành bằng một chạm", "✅ 登録の分量で完了": "✅ Xong theo lượng đã đăng ký", "✏️ 量を変えて完了": "✏️ Đổi lượng rồi hoàn thành", "今日つくった量を入力": "Nhập lượng đã làm hôm nay", "実際の使用量": "Lượng thực tế đã dùng", "この量が在庫から差し引かれます": "Lượng này sẽ được trừ khỏi tồn kho", "担当者を選んでください（複数選択可）": "Chọn người phụ trách (có thể chọn nhiều)", "✓ クリーン完了！": "✓ Đã dọn xong!", "✓ 仕込み完了！在庫を更新しました": "✓ Sơ chế xong! Đã cập nhật tồn kho", "🎉 全完了！": "🎉 Xong tất cả!", "タスクなし": "Không có việc", "担当者不明で完了": "Hoàn thành khi chưa rõ người phụ trách", "担当者不明のまま完了": "Hoàn thành khi chưa rõ người phụ trách", "✓ 担当者を選択（複数可）": "✓ Chọn người phụ trách (nhiều người)", "🌅 開店チェック": "🌅 Kiểm tra mở cửa", "🌙 閉店チェック": "🌙 Kiểm tra đóng cửa", "開店": "Mở cửa", "閉店": "Đóng cửa", "✅ 正常": "✅ Bình thường", "✓ 正常": "✓ Bình thường", "⚠️ 異常あり": "⚠️ Có bất thường", "⚠ 異常報告": "⚠ Báo cáo bất thường", "結果はいかがでしたか？": "Kết quả thế nào?", "記録する": "Ghi lại", "数値を入力": "Nhập số", "数値を入力してください": "Vui lòng nhập số", "正常範囲": "Phạm vi bình thường", "🌅 開店チェック完了！承認へ →": "🌅 Xong kiểm tra mở cửa! Sang bước xác nhận →", "🌙 閉店チェック完了！承認へ →": "🌙 Xong kiểm tra đóng cửa! Sang bước xác nhận →", "🌅 開店承認": "🌅 Xác nhận mở cửa", "🌙 閉店承認": "🌙 Xác nhận đóng cửa", "チェックを実施したスタッフを選択": "Chọn nhân viên đã kiểm tra", "最後に確認したスタッフが承認します。": "Nhân viên kiểm tra cuối cùng sẽ xác nhận.", "別のスタッフが承認する場合": "Nếu nhân viên khác xác nhận", "進捗": "Tiến độ", "温度確認": "Kiểm tra nhiệt độ", "衛生確認": "Kiểm tra vệ sinh", "安全確認": "Kiểm tra an toàn", "オープン準備": "Chuẩn bị mở cửa", "キッチン": "Bếp", "ホール": "Sảnh", "レジ・売上": "Quầy thu ngân・doanh thu", "その他": "Khác", "⚠️ 実際の数値を入力してください": "⚠️ Hãy nhập số thực tế", "数値異常": "Số bất thường", "⚠ 基準範囲外です。本部へ報告されます。": "⚠ Ngoài phạm vi tiêu chuẩn. Sẽ được báo cáo lên trụ sở.", "もう一度入力": "Nhập lại", "この数値で完了": "Hoàn thành với số này", "⚠ 異常を記録しました": "⚠ Đã ghi lại bất thường", "📦 検品チェック": "📦 Kiểm hàng", "✓ 検品完了": "✓ Kiểm hàng xong", "⚠ 差異記録して完了": "⚠ Ghi chênh lệch rồi hoàn thành", "⚠ 数量差異があります。": "⚠ Có chênh lệch số lượng.", "検品する →": "Kiểm hàng →", "届いた荷物の数を確かめて、在庫に反映します": "Kiểm số lượng hàng đã nhận và cập nhật vào tồn kho", "スタッフ用ログインQR": "QR đăng nhập cho nhân viên", "ログインQRは、お店のタブレット（店長のメールでログインした端末）で表示してください。": "Hãy hiển thị QR đăng nhập trên máy tính bảng của cửa hàng (máy đăng nhập bằng email của quản lý)."}, "id": {"今日のやること": "Tugas hari ini", "今日の仕込み・そうじ": "Persiapan・bersih-bersih hari ini", "開店・閉店チェック": "Cek buka・tutup toko", "毎日の開け閉めの確認": "Pemeriksaan buka-tutup harian", "検品": "Cek barang masuk", "届いた荷物の数を確かめる": "Cek jumlah barang yang datang", "ログインQR": "QR login", "スタッフのスマホでログイン": "Login dengan HP staf", "お店の数字": "Angka toko", "仕込み・そうじ": "Persiapan・bersih-bersih", "在庫・棚卸し": "Stok・stok opname", "発注": "Pemesanan", "スタッフ": "Staf", "名前とPINで切り替え": "Ganti dengan nama & PIN", "さんで操作中": "sedang memakai", "お店に戻る": "Kembali ke layar toko", "ログアウト": "Keluar", "だれが使いますか？": "Siapa yang memakai?", "名前を選んで、自分のPINを入れてください。": "Pilih nama Anda, lalu masukkan PIN Anda.", "4けたのPINを入れてください": "Masukkan PIN 4 digit", "PINが違います": "PIN salah", "このまま切り替える": "Ganti sekarang", "← 名前の選択に戻る": "← Kembali pilih nama", "この人はPINがまだ設定されていません。": "Orang ini belum punya PIN.", "店長がスタッフ管理でPINを設定してください。": "Manajer toko harap mengatur PIN di menu staf.", "キャンセル": "Batal", "戻る": "Kembali", "閉じる": "Tutup", "保存する": "Simpan", "今日": "Hari ini", "明日": "Besok", "明後日": "Lusa", "3日後": "3 hari lagi", "今日の進捗": "Progres hari ini", "未完了": "Belum selesai", "完了": "Selesai", "仕込み": "Persiapan", "クリーン": "Bersih-bersih", "完了したタスクがここに入ります": "Tugas yang selesai akan muncul di sini", "＋ タスクを追加": "＋ Tambah tugas", "タップで完了 ／ ＋ボタンまたは左メニューから追加 ／ 🗑 で削除": "Ketuk untuk selesai ／ Tambah lewat tombol ＋ atau menu kiri ／ Hapus dengan 🗑", "いつものタスクから選ぶ（タップで追加）": "Pilih dari tugas rutin (ketuk untuk menambah)", "新しく作る": "Buat baru", "タスク名": "Nama tugas", "締切時刻": "Batas waktu", "担当者": "Penanggung jawab", "追加する": "Tambah", "✓ 完了": "✓ Selesai", "✓ 完了する": "✓ Selesaikan", "完了する": "Selesaikan", "削除": "Hapus", "編集": "Edit", "仕込み完了確認": "Konfirmasi persiapan selesai", "仕込みはいかがでしたか？": "Bagaimana persiapannya?", "ワンタップで完了": "Selesai dengan sekali ketuk", "✅ 登録の分量で完了": "✅ Selesai sesuai jumlah terdaftar", "✏️ 量を変えて完了": "✏️ Ubah jumlah lalu selesai", "今日つくった量を入力": "Masukkan jumlah yang dibuat hari ini", "実際の使用量": "Jumlah yang benar-benar dipakai", "この量が在庫から差し引かれます": "Jumlah ini akan dikurangi dari stok", "担当者を選んでください（複数選択可）": "Pilih penanggung jawab (boleh lebih dari satu)", "✓ クリーン完了！": "✓ Bersih-bersih selesai!", "✓ 仕込み完了！在庫を更新しました": "✓ Persiapan selesai! Stok sudah diperbarui", "🎉 全完了！": "🎉 Semua selesai!", "タスクなし": "Tidak ada tugas", "担当者不明で完了": "Selesai tanpa penanggung jawab", "担当者不明のまま完了": "Selesai tanpa penanggung jawab", "✓ 担当者を選択（複数可）": "✓ Pilih penanggung jawab (bisa beberapa)", "🌅 開店チェック": "🌅 Cek buka toko", "🌙 閉店チェック": "🌙 Cek tutup toko", "開店": "Buka", "閉店": "Tutup", "✅ 正常": "✅ Normal", "✓ 正常": "✓ Normal", "⚠️ 異常あり": "⚠️ Ada masalah", "⚠ 異常報告": "⚠ Lapor masalah", "結果はいかがでしたか？": "Bagaimana hasilnya?", "記録する": "Catat", "数値を入力": "Masukkan angka", "数値を入力してください": "Silakan masukkan angka", "正常範囲": "Rentang normal", "🌅 開店チェック完了！承認へ →": "🌅 Cek buka selesai! Lanjut ke persetujuan →", "🌙 閉店チェック完了！承認へ →": "🌙 Cek tutup selesai! Lanjut ke persetujuan →", "🌅 開店承認": "🌅 Persetujuan buka toko", "🌙 閉店承認": "🌙 Persetujuan tutup toko", "チェックを実施したスタッフを選択": "Pilih staf yang melakukan pengecekan", "最後に確認したスタッフが承認します。": "Staf yang terakhir mengecek akan menyetujui.", "別のスタッフが承認する場合": "Jika staf lain yang menyetujui", "進捗": "Progres", "温度確認": "Cek suhu", "衛生確認": "Cek kebersihan", "安全確認": "Cek keamanan", "オープン準備": "Persiapan buka", "キッチン": "Dapur", "ホール": "Ruang makan", "レジ・売上": "Kasir・penjualan", "その他": "Lainnya", "⚠️ 実際の数値を入力してください": "⚠️ Masukkan angka sebenarnya", "数値異常": "Angka tidak normal", "⚠ 基準範囲外です。本部へ報告されます。": "⚠ Di luar batas standar. Akan dilaporkan ke kantor pusat.", "もう一度入力": "Masukkan ulang", "この数値で完了": "Selesai dengan angka ini", "⚠ 異常を記録しました": "⚠ Masalah sudah dicatat", "📦 検品チェック": "📦 Cek barang masuk", "✓ 検品完了": "✓ Cek barang selesai", "⚠ 差異記録して完了": "⚠ Catat selisih lalu selesai", "⚠ 数量差異があります。": "⚠ Ada selisih jumlah.", "検品する →": "Cek →", "届いた荷物の数を確かめて、在庫に反映します": "Cek jumlah barang yang datang lalu masukkan ke stok", "スタッフ用ログインQR": "QR login untuk staf", "ログインQRは、お店のタブレット（店長のメールでログインした端末）で表示してください。": "Tampilkan QR login di tablet toko (perangkat yang login dengan email manajer)."}, "ne": {"今日のやること": "आजको काम", "今日の仕込み・そうじ": "आजको तयारी・सरसफाइ", "開店・閉店チェック": "पसल खोल्ने・बन्द गर्ने जाँच", "毎日の開け閉めの確認": "दैनिक खोल्ने/बन्द गर्ने जाँच", "検品": "सामान जाँच", "届いた荷物の数を確かめる": "आएको सामानको संख्या जाँच्ने", "ログインQR": "लगइन QR", "スタッフのスマホでログイン": "कर्मचारीको फोनबाट लगइन", "お店の数字": "पसलको तथ्यांक", "仕込み・そうじ": "तयारी・सरसफाइ", "在庫・棚卸し": "स्टक・गणना", "発注": "अर्डर", "スタッフ": "कर्मचारी", "名前とPINで切り替え": "नाम र PIN ले परिवर्तन", "さんで操作中": "ले चलाउँदै", "お店に戻る": "पसल स्क्रिनमा फर्कनुहोस्", "ログアウト": "लगआउट", "だれが使いますか？": "को प्रयोग गर्दै हुनुहुन्छ?", "名前を選んで、自分のPINを入れてください。": "आफ्नो नाम छानेर आफ्नो PIN हाल्नुहोस्।", "4けたのPINを入れてください": "४ अंकको PIN हाल्नुहोस्", "PINが違います": "PIN मिलेन", "このまま切り替える": "यसै परिवर्तन गर्नुहोस्", "← 名前の選択に戻る": "← नाम छान्न फर्कनुहोस्", "この人はPINがまだ設定されていません。": "यो व्यक्तिको PIN अझै सेट गरिएको छैन।", "店長がスタッフ管理でPINを設定してください。": "पसल प्रबन्धकले कर्मचारी व्यवस्थापनमा PIN सेट गर्नुहोस्।", "キャンセル": "रद्द गर्नुहोस्", "戻る": "फर्कनुहोस्", "閉じる": "बन्द गर्नुहोस्", "保存する": "सेभ गर्नुहोस्", "今日": "आज", "明日": "भोलि", "明後日": "पर्सि", "3日後": "३ दिनपछि", "今日の進捗": "आजको प्रगति", "未完了": "बाँकी", "完了": "सकियो", "仕込み": "तयारी", "クリーン": "सरसफाइ", "完了したタスクがここに入ります": "सकिएका कामहरू यहाँ देखिन्छन्", "＋ タスクを追加": "＋ काम थप्नुहोस्", "タップで完了 ／ ＋ボタンまたは左メニューから追加 ／ 🗑 で削除": "ट्याप गरेर सक्नुहोस् ／ ＋ बटन वा बायाँ मेनुबाट थप्नुहोस् ／ 🗑 ले मेटाउनुहोस्", "いつものタスクから選ぶ（タップで追加）": "सधैंका कामबाट छान्नुहोस् (ट्याप गर्दा थपिन्छ)", "新しく作る": "नयाँ बनाउनुहोस्", "タスク名": "कामको नाम", "締切時刻": "अन्तिम समय", "担当者": "जिम्मेवार व्यक्ति", "追加する": "थप्नुहोस्", "✓ 完了": "✓ सकियो", "✓ 完了する": "✓ सक्नुहोस्", "完了する": "सक्नुहोस्", "削除": "मेटाउनुहोस्", "編集": "सम्पादन", "仕込み完了確認": "तयारी सकिएको पुष्टि", "仕込みはいかがでしたか？": "तयारी कस्तो भयो?", "ワンタップで完了": "एक ट्यापमै सक्नुहोस्", "✅ 登録の分量で完了": "✅ दर्ता गरिएको मात्रामा सकियो", "✏️ 量を変えて完了": "✏️ मात्रा बदलेर सक्नुहोस्", "今日つくった量を入力": "आज बनाएको मात्रा हाल्नुहोस्", "実際の使用量": "वास्तविक प्रयोग मात्रा", "この量が在庫から差し引かれます": "यो मात्रा स्टकबाट घटाइन्छ", "担当者を選んでください（複数選択可）": "जिम्मेवार व्यक्ति छान्नुहोस् (धेरै छान्न सकिन्छ)", "✓ クリーン完了！": "✓ सरसफाइ सकियो!", "✓ 仕込み完了！在庫を更新しました": "✓ तयारी सकियो! स्टक अपडेट भयो", "🎉 全完了！": "🎉 सबै सकियो!", "タスクなし": "काम छैन", "担当者不明で完了": "जिम्मेवार नखुली सक्नुहोस्", "担当者不明のまま完了": "जिम्मेवार नखुली सक्नुहोस्", "✓ 担当者を選択（複数可）": "✓ जिम्मेवार छान्नुहोस् (धेरै)", "🌅 開店チェック": "🌅 पसल खोल्ने जाँच", "🌙 閉店チェック": "🌙 पसल बन्द गर्ने जाँच", "開店": "खोल्ने", "閉店": "बन्द", "✅ 正常": "✅ ठीक छ", "✓ 正常": "✓ ठीक छ", "⚠️ 異常あり": "⚠️ समस्या छ", "⚠ 異常報告": "⚠ समस्या रिपोर्ट", "結果はいかがでしたか？": "नतिजा कस्तो भयो?", "記録する": "रेकर्ड गर्नुहोस्", "数値を入力": "संख्या हाल्नुहोस्", "数値を入力してください": "कृपया संख्या हाल्नुहोस्", "正常範囲": "सामान्य दायरा", "🌅 開店チェック完了！承認へ →": "🌅 खोल्ने जाँच सकियो! स्वीकृतितर्फ →", "🌙 閉店チェック完了！承認へ →": "🌙 बन्द गर्ने जाँच सकियो! स्वीकृतितर्फ →", "🌅 開店承認": "🌅 खोल्ने स्वीकृति", "🌙 閉店承認": "🌙 बन्द गर्ने स्वीकृति", "チェックを実施したスタッフを選択": "जाँच गर्ने कर्मचारी छान्नुहोस्", "最後に確認したスタッフが承認します。": "अन्तिममा जाँच गर्ने कर्मचारीले स्वीकृत गर्छ।", "別のスタッフが承認する場合": "अर्को कर्मचारीले स्वीकृत गर्ने भए", "進捗": "प्रगति", "温度確認": "तापक्रम जाँच", "衛生確認": "सरसफाइ जाँच", "安全確認": "सुरक्षा जाँच", "オープン準備": "खोल्ने तयारी", "キッチン": "भान्सा", "ホール": "हल", "レジ・売上": "क्यास・बिक्री", "その他": "अन्य", "⚠️ 実際の数値を入力してください": "⚠️ वास्तविक संख्या हाल्नुहोस्", "数値異常": "असामान्य संख्या", "⚠ 基準範囲外です。本部へ報告されます。": "⚠ मापदण्ड बाहिर छ। मुख्य कार्यालयमा रिपोर्ट हुन्छ।", "もう一度入力": "फेरि हाल्नुहोस्", "この数値で完了": "यही संख्यामा सक्नुहोस्", "⚠ 異常を記録しました": "⚠ समस्या रेकर्ड भयो", "📦 検品チェック": "📦 सामान जाँच", "✓ 検品完了": "✓ सामान जाँच सकियो", "⚠ 差異記録して完了": "⚠ फरक रेकर्ड गरेर सक्नुहोस्", "⚠ 数量差異があります。": "⚠ संख्यामा फरक छ।", "検品する →": "जाँच गर्नुहोस् →", "届いた荷物の数を確かめて、在庫に反映します": "आएको सामान गनेर स्टकमा थप्छ", "スタッフ用ログインQR": "कर्मचारीका लागि लगइन QR", "ログインQRは、お店のタブレット（店長のメールでログインした端末）で表示してください。": "लगइन QR पसलको ट्याब्लेट (प्रबन्धकको इमेलले लगइन गरेको उपकरण) मा देखाउनुहोस्।"}};
+const I18N = (() => {
+  const JP = /[぀-ヿ㐀-鿿]/;
+  let lang = "ja";
+  try { lang = localStorage.getItem("mt_lang") || "ja"; } catch {}
+  if (!LANGS.some(l=>l[0]===lang)) lang = "ja";
+  let cache = {};
+  const loadCache = () => { try { cache = JSON.parse(localStorage.getItem("mt_i18n_"+lang)||"{}") || {}; } catch { cache = {}; } };
+  const saveCache = () => { try { localStorage.setItem("mt_i18n_"+lang, JSON.stringify(cache)); } catch {} };
+  loadCache();
+  const rec = new WeakMap();      // テキスト → {src(日本語), out(表示中)}
+  const tracked = new Set();
+  const pending = new Set();
+  const failed = new Set();
+  let skipNames = new Set();
+  let timer = null, busy = false, observer = null, queued = new Set(), raf = 0;
+  const listeners = new Set();
+
+  const isSkipped = el => !el || !!el.closest('[data-notranslate],textarea,script,style,code,[contenteditable="true"]');
+  const tr = (key) => {
+    if (!key || !JP.test(key) || skipNames.has(key)) return null;
+    const v = (I18N_DICT[lang] && I18N_DICT[lang][key]) || cache[key];
+    if (v) return v;
+    if (!failed.has(key)) { pending.add(key); schedule(); }
+    return null;
+  };
+  const translateText = (src) => {
+    const key = src.trim();
+    const v = tr(key);
+    return v ? src.replace(key, v) : null;
+  };
+  const applyNode = (node) => {
+    if (lang === "ja") return;
+    const r = rec.get(node);
+    const cur = node.nodeValue;
+    if (r && cur === r.out) return;            // こちらで書いたまま
+    if (!cur || !JP.test(cur)) { if (r) { rec.delete(node); tracked.delete(node); } return; }
+    if (isSkipped(node.parentElement)) return;
+    const out = translateText(cur);
+    rec.set(node, { src: cur, out: out ?? cur });
+    tracked.add(node);
+    if (out != null && out !== cur) node.nodeValue = out;
+  };
+  const applyEl = (el) => {
+    if (lang === "ja" || isSkipped(el)) return;
+    const ph = el.getAttribute && el.getAttribute("placeholder");
+    if (ph && JP.test(ph)) {
+      const out = translateText(ph);
+      if (out) { if (!el.dataset.phOrig) el.dataset.phOrig = ph; el.setAttribute("placeholder", out); }
+    }
+  };
+  const walk = (root) => {
+    if (!root || lang === "ja") return;
+    if (root.nodeType === 3) { applyNode(root); return; }
+    if (root.nodeType !== 1) return;
+    if (root.matches && root.matches("input[placeholder],textarea[placeholder]")) applyEl(root);
+    root.querySelectorAll && root.querySelectorAll("input[placeholder],textarea[placeholder]").forEach(applyEl);
+    const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let n; while ((n = w.nextNode())) applyNode(n);
+  };
+  const refresh = () => {       // 新しい訳が届いたら、表示中の文字を作り直す
+    tracked.forEach(node => {
+      if (!node.isConnected) { tracked.delete(node); return; }
+      const r = rec.get(node);
+      if (r && node.nodeValue === r.out) {
+        const out = translateText(r.src);
+        if (out != null && out !== r.out) { r.out = out; node.nodeValue = out; }
+      }
+    });
+    document.querySelectorAll("[data-ph-orig]").forEach(applyEl);
+    walk(document.body);
+  };
+  const flushQueued = () => { raf = 0; const arr = [...queued]; queued.clear(); arr.forEach(walk); };
+  const startObserver = () => {
+    if (observer || !document.body) return;
+    observer = new MutationObserver(muts => {
+      if (lang === "ja") return;
+      for (const m of muts) {
+        if (m.type === "characterData") queued.add(m.target);
+        else m.addedNodes.forEach(n => queued.add(n));
+      }
+      if (!raf) raf = requestAnimationFrame(flushQueued);
+    });
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+  };
+  function schedule() { if (!timer) timer = setTimeout(flushAI, 400); }
+  async function flushAI() {
+    timer = null;
+    if (busy || lang === "ja" || !pending.size) return;
+    busy = true;
+    const target = lang;
+    const batch = [...pending].slice(0, 60);
+    batch.forEach(k => pending.delete(k));
+    try {
+      const sys = "You translate short Japanese UI texts of a restaurant kitchen/operations app into " + LANG_AI_NAME[target] +
+        " for restaurant staff. Keep numbers, times, units (kg, g, L, 個, ℃), emojis, symbols and brand/product codes as they are. " +
+        "Use simple, natural words. Return ONLY a JSON array of strings in the same order and same length as the input array.";
+      const res = await api.ai.chat([{ role: "user", content: JSON.stringify(batch) }], sys);
+      let text = (res && res.content || []).map(c => c.text || "").join("").trim();
+      const a = text.indexOf("["), b = text.lastIndexOf("]");
+      const out = JSON.parse(a >= 0 && b > a ? text.slice(a, b + 1) : text);
+      if (target === lang && Array.isArray(out) && out.length === batch.length) {
+        batch.forEach((k, i) => { if (typeof out[i] === "string" && out[i].trim()) cache[k] = out[i].trim(); else failed.add(k); });
+        saveCache();
+        refresh();
+      } else batch.forEach(k => failed.add(k));
+    } catch (e) {
+      batch.forEach(k => failed.add(k));   // 失敗したものは日本語のまま（この画面を開いている間は再試行しない）
+    }
+    busy = false;
+    if (pending.size) schedule();
+  }
+  const restore = () => {
+    tracked.forEach(node => { const r = rec.get(node); if (r && node.isConnected && node.nodeValue === r.out) node.nodeValue = r.src; });
+    tracked.clear();
+    document.querySelectorAll("[data-ph-orig]").forEach(el => { el.setAttribute("placeholder", el.dataset.phOrig); delete el.dataset.phOrig; });
+  };
+  const setLang = (l) => {
+    if (!LANGS.some(x=>x[0]===l) || l === lang) return;
+    restore();
+    lang = l; pending.clear(); failed.clear();
+    try { localStorage.setItem("mt_lang", l); } catch {}
+    document.documentElement.lang = l;
+    loadCache();
+    startObserver();
+    walk(document.body);
+    listeners.forEach(f => f(l));
+  };
+  const init = () => { document.documentElement.lang = lang; startObserver(); if (lang !== "ja") setTimeout(()=>walk(document.body), 0); };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
+  return {
+    getLang: () => lang, setLang,
+    setSkipNames: (names) => { skipNames = new Set((names||[]).filter(Boolean).map(s=>String(s).trim())); },
+    subscribe: (f) => { listeners.add(f); return () => listeners.delete(f); },
+  };
+})();
+
+// 言語の切替ボタン（右上）
+function LangSwitcher() {
+  const [lang, setLangS] = useState(I18N.getLang());
+  useEffect(() => I18N.subscribe(setLangS), []);
+  return (
+    <label data-notranslate="1" style={{display:"inline-flex",alignItems:"center",gap:4,padding:"4px 8px",background:"#FFFFFF",border:"1px solid #EDE3D6",borderRadius:999,fontSize:13,color:"#45433F"}}>
+      <span aria-hidden="true">🌐</span>
+      <select value={lang} onChange={e=>I18N.setLang(e.target.value)} aria-label="Language"
+        style={{border:"none",background:"transparent",fontSize:13,fontWeight:700,color:"#2C2C2A",cursor:"pointer",outline:"none"}}>
+        {LANGS.map(([k,l])=><option key={k} value={k}>{l}</option>)}
+      </select>
+    </label>
+  );
+}
+
 function SwitchUserModal({users, onSwitch, onClose}) {
   const [sel, setSel] = useState(null);
   const [pin, setPin] = useState("");
@@ -6893,6 +7051,8 @@ function AppInner() {
 
   INITIAL_USERS = users;
   INITIAL_STORES = stores; // 全コンポーネントのUSERS参照を最新stateに同期
+  // 人の名前・店舗名は翻訳しない
+  I18N.setSkipNames([...(users||[]).map(u=>u.name), ...(stores||[]).map(st=>st.name)]);
   INITIAL_SUPPLIERS = suppliers;
   INITIAL_INVENTORY = inventory;
   INITIAL_ORDERS = orders;
@@ -7206,6 +7366,7 @@ function AppInner() {
           </div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",justifyContent:"flex-end"}}>
+          <LangSwitcher/>
           {isHonbu && <div style={{padding:"3px 10px",background:"#EEEDFE",border:"1px solid #6D28D944",borderRadius:8,fontSize:13,color:"#6D28D9"}}>{selectedStoreId ? "🏪 "+( INITIAL_STORES.find(s=>s.id===selectedStoreId)?.name||"") : "👁 全店舗"}</div>}
           {warnCount > 0 && !isFrontStaff && <div style={{padding:"3px 10px",background:"#FFFFFF",border:"1px solid #F6CFAF",borderRadius:8,fontSize:13,color:"#A16207"}}>⚠ 差異 {warnCount}件</div>}
           {/* お店アカウント端末：名前＋PINで切り替え */}
