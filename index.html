@@ -3249,6 +3249,20 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
   // 候補以外の商品（在庫は足りているが一緒に頼みたいもの）
   const [extraOpen, setExtraOpen] = useState({});   // {supplierId: true}
   const [extraPicked, setExtraPicked] = useState({}); // {itemId: true}
+  const [stockCounts, setStockCounts] = useState({}); // 「発注時に数える」商品の今の在庫 {itemId: 値}
+  const countInput = item => {
+    const cv = stockCounts[item.id] ?? "";
+    return (
+      <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginTop:6}}>
+        <span style={{fontSize:13,fontWeight:700,color:"#7C2D12"}}>今の在庫</span>
+        <input type="number" inputMode="decimal" min="0" value={cv} placeholder="数える"
+          onChange={e=>{ const v=e.target.value; setStockCounts(p=>({...p,[item.id]:v})); }}
+          style={{width:90,padding:"5px 8px",background:"#FFFFFF",border:"2px solid "+(String(cv).trim()===""?"#FCD34D":"#C0DD97"),borderRadius:8,fontSize:14,textAlign:"right",color:"#2C2C2A"}}/>
+        <span style={{fontSize:13,color:"#45433F"}}>{item.unit}</span>
+        <span style={{fontSize:12,color:"#6E6C66"}}>（アプリ上: {Number(item.stock||0).toLocaleString()}{item.unit}）</span>
+      </div>
+    );
+  };
   const extraCandidates = supplierId => inventory.filter(i => i.supplierId===supplierId
     && (!storeFilter || String(i.storeId)===String(storeFilter))
     && !lowItems.some(l=>l.id===i.id) && !onOrderIds.has(i.id));
@@ -3258,7 +3272,10 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
     const sup = suppliers.find(s=>s.id===supplierId);
     const items = [...(grouped[supplierId]||[]).filter(i=>selectedItems[i.id]!==false), ...pickedExtras(supplierId)];
     if (!items.length) { notify("発注商品を選択してください","warn"); return; }
-    setConfirmOrder({supplierId, sup, items, deliveryDate: targetDay, comment: ""});
+    const missing = items.filter(i=>i.countOnOrder && String(stockCounts[i.id]??"").trim()==="");
+    if (missing.length) { notify(`「${missing.map(i=>i.name).join("・")}」の今の在庫を入れてください`,"warn"); return; }
+    const counts = Object.fromEntries(items.filter(i=>i.countOnOrder).map(i=>[i.id, stockCounts[i.id]]));
+    setConfirmOrder({supplierId, sup, items, counts, deliveryDate: targetDay, comment: ""});
   };
   const executeSendOrder = async () => {
     if (!confirmOrder) return;
@@ -3287,6 +3304,7 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
 
     setSelectedItems({});
     setExtraPicked(p => { const n={...p}; items.forEach(i=>{ delete n[i.id]; }); return n; });
+    setStockCounts(p => { const n={...p}; items.forEach(i=>{ delete n[i.id]; }); return n; });
     if (DIRECT_ORDER_METHODS.includes(primaryMethodOf(sup))) {
       // 業者アプリなどで発注済み → 送る画面は出さず、そのまま検品待ちへ
       setConfirmOrder(null);
@@ -3468,7 +3486,7 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
           <textarea value={confirmOrder.comment||""} onChange={e=>{ const v=e.target.value; setConfirmOrder(p=>({...p,comment:v})); }}
             rows={2} placeholder="例: 午前中に納品お願いします / 前回の欠品分も一緒に"
             style={{width:"100%",padding:"10px 12px",background:"#FFFFFF",border:"1px solid #E4E0D6",borderRadius:10,fontSize:15,lineHeight:1.5,color:"#2C2C2A",fontFamily:"inherit",resize:"vertical",marginBottom:12}}/>
-          {confirmOrder.items.some(i=>i.countOnOrder) && <div style={{fontSize:13,color:"#5F5D58",lineHeight:1.6,marginBottom:6}}>「今の在庫」の欄がある商品は、お店の数を数えて入れてください。アプリの在庫もこの数に合わせます。</div>}
+
           {confirmOrder.items.map(i=>{
             const cv = confirmOrder.counts?.[i.id] ?? "";
             return (
@@ -3477,14 +3495,7 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
                 <span style={{fontSize:14,color:"#45433F",fontWeight:700}}>{i.name}{i.countOnOrder && <span style={{marginLeft:6,fontSize:12,fontWeight:800,color:"#7C2D12",background:"#FEF3C7",border:"1px solid #FCD34D",padding:"1px 8px",borderRadius:999,whiteSpace:"nowrap"}}>🔢 発注時に数える</span>}</span>
                 <span style={{fontSize:15,fontWeight:700,color:"#E85D04",fontFamily:"monospace"}}>発注 {getQty(i).toLocaleString()}{orderUnitOf(i)}{byCase(i)&&<span style={{fontSize:12,color:"#5F5D58",fontWeight:600}}> （約{(getQty(i)*caseSize(i)).toLocaleString()}{i.unit}）</span>}</span>
               </div>
-              {i.countOnOrder && <div style={{display:"flex",alignItems:"center",gap:8,marginTop:6,flexWrap:"wrap"}}>
-                <span style={{fontSize:13,color:"#45433F"}}>今の在庫</span>
-                <input type="number" inputMode="decimal" min="0" value={cv} placeholder="数を入力"
-                  onChange={e=>{ const v=e.target.value; setConfirmOrder(p=>({...p,counts:{...(p.counts||{}),[i.id]:v}})); }}
-                  style={{width:100,padding:"6px 8px",background:"#FFFFFF",border:"2px solid "+(String(cv).trim()===""?"#F6CFAF":"#C0DD97"),borderRadius:8,fontSize:15,textAlign:"right",color:"#2C2C2A"}}/>
-                <span style={{fontSize:13,color:"#45433F"}}>{i.unit}</span>
-                <span style={{fontSize:12,color:"#6E6C66"}}>（アプリ上: {Number(i.stock||0).toLocaleString()}{i.unit}）</span>
-              </div>}
+              {i.countOnOrder && <div style={{fontSize:13,color:"#45433F",marginTop:4}}>今の在庫: <b>{cv}{i.unit}</b>（アプリの在庫をこの数に合わせます）</div>}
             </div>
             );
           })}
@@ -3499,7 +3510,6 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
                       ? <>{confirmOrder.sup.appName ? "「"+confirmOrder.sup.appName+"」" : "業者さんのアプリなど"}で発注したら押してください。<b>発注済み</b>になり、届いたら検品で確認できます。</>
                       : "まず発注を記録します。次の画面で、LINE・メールなどを開いて業者さんに送ります。"}
                   </div>
-                  {!countsReady && <div style={{fontSize:13,color:"#C2410C"}}>「今の在庫」を入れると押せます。</div>}
                   <button onClick={executeSendOrder} disabled={!countsReady}
                     style={{padding:"15px",background:"#E8792F",color:"#fff",border:"none",borderRadius:12,fontSize:16,fontWeight:800,cursor:countsReady?"pointer":"not-allowed",opacity:countsReady?1:0.45}}>
                     {direct ? "✓ 発注済みにする" : "✓ 発注を記録する"}
@@ -3627,6 +3637,7 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
                         <div style={{flex:1,minWidth:120}}>
                           <div style={{fontSize:14,fontWeight:600,color:"#2C2C2A"}}>{item.name}{item.countOnOrder && <span style={{marginLeft:6,fontSize:12,fontWeight:800,color:"#7C2D12",background:"#FEF3C7",border:"1px solid #FCD34D",padding:"1px 8px",borderRadius:999,whiteSpace:"nowrap"}}>🔢 発注時に数える</span>}</div>
                           <div style={{fontSize:13,color:"#B42318",marginTop:2}}>在庫 {item.stock.toLocaleString()}{item.unit} / 最低 {item.minStock.toLocaleString()}{item.unit}</div>
+                          {item.countOnOrder && checked && countInput(item)}
                         </div>
                         <div style={{display:"flex",alignItems:"center",gap:8}}>
                           <span style={{fontSize:13,color:"#5F5D58"}}>発注数量:</span>
@@ -3657,6 +3668,7 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
                                 <div style={{flex:1,minWidth:120}}>
                                   <div style={{fontSize:14,fontWeight:600,color:"#2C2C2A"}}>{item.name}{item.countOnOrder && <span style={{marginLeft:6,fontSize:12,fontWeight:800,color:"#7C2D12",background:"#FEF3C7",border:"1px solid #FCD34D",padding:"1px 8px",borderRadius:999,whiteSpace:"nowrap"}}>🔢 発注時に数える</span>}</div>
                                   <div style={{fontSize:13,color:"#5F5D58",marginTop:2}}>在庫 {Number(item.stock||0).toLocaleString()}{item.unit}</div>
+                                  {item.countOnOrder && on && countInput(item)}
                                 </div>
                                 {on && (
                                   <div style={{display:"flex",alignItems:"center",gap:8}}>
