@@ -4453,6 +4453,20 @@ function TaskManagerView({routines, setRoutines, allPrepTasks, setAllPrepTasks, 
     setDragId(null); setDragOver(null);
   };
 
+  // ▲▼ボタンで並べ替え（タブレット・スマホでも使えるように）。見えている並びの1つ上/下と入れ替える
+  const moveRoutine = (id, dir) => {
+    const vis = myRoutines.map(r=>r.id);
+    const i = vis.indexOf(id), j = i + dir;
+    if (i<0 || j<0 || j>=vis.length) return;
+    const other = vis[j];
+    setRoutines(prev => {
+      const arr = [...prev];
+      const a = arr.findIndex(r=>r.id===id), b = arr.findIndex(r=>r.id===other);
+      [arr[a], arr[b]] = [arr[b], arr[a]];
+      return arr.map((r,k)=>({...r,order:k}));
+    });
+  };
+
   // ── Form helpers ──
   const openNew = () => {
     setEditRoutine(null);
@@ -4698,10 +4712,10 @@ function TaskManagerView({routines, setRoutines, allPrepTasks, setAllPrepTasks, 
       {tab==="routines" && (
         <div>
           <div style={{background:"#FFFFFF",border:"1px solid #E4E0D6",borderRadius:12,padding:12,marginBottom:16,fontSize:13,color:"#5F5D58"}}>
-            🖱 ドラッグして表示順を変更できます
+            ▲▼ボタン（パソコンはドラッグでも）で表示順を変えられます。この順番が「＋ タスクを追加」の一覧にも使われます。
           </div>
           {myRoutines.length===0 && <div style={{color:"#6E6C66",fontSize:14,padding:24,textAlign:"center"}}>ルーティンがまだ登録されていません</div>}
-          {myRoutines.map(r=>(
+          {myRoutines.map((r,ri)=>(
             <div key={r.id}
               draggable
               onDragStart={e=>handleDragStart(e,r.id)}
@@ -4710,7 +4724,12 @@ function TaskManagerView({routines, setRoutines, allPrepTasks, setAllPrepTasks, 
               onDragEnd={()=>{setDragId(null);setDragOver(null);}}
               style={{background:dragOver===r.id?"#E6F1FB":r.active?"#FFFFFF":"#FFFFFF",border:`1px solid ${dragOver===r.id?"#E85D04":r.active?"#E4E0D6":"#E4E0D6"}`,borderRadius:14,padding:16,marginBottom:8,cursor:"grab",opacity:r.active?1:.5,transition:"all .15s"}}>
               <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
-                <span style={{fontSize:18,cursor:"grab",color:"#6E6C66"}}>⠿</span>
+                <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                  <button onClick={()=>moveRoutine(r.id,-1)} disabled={ri===0} aria-label="上へ"
+                    style={{width:34,height:28,borderRadius:8,border:"1px solid #E4E0D6",background:ri===0?"#F5F3EE":"#FFFFFF",color:ri===0?"#C9C5BC":"#45433F",fontSize:14,cursor:ri===0?"default":"pointer"}}>▲</button>
+                  <button onClick={()=>moveRoutine(r.id,1)} disabled={ri===myRoutines.length-1} aria-label="下へ"
+                    style={{width:34,height:28,borderRadius:8,border:"1px solid #E4E0D6",background:ri===myRoutines.length-1?"#F5F3EE":"#FFFFFF",color:ri===myRoutines.length-1?"#C9C5BC":"#45433F",fontSize:14,cursor:ri===myRoutines.length-1?"default":"pointer"}}>▼</button>
+                </div>
                 <div style={{flex:1}}>
                   <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}}>
                     <span style={{fontSize:15,fontWeight:700,color:r.active?"#2C2C2A":"#5F5D58"}}>{r.name}</span>
@@ -4993,8 +5012,14 @@ function TopView({hideStockAlert=false, allPrepTasks, setAllPrepTasks, cleanTask
   const quickItems = addCategory==="prep"
     ? (routines||[]).filter(r=>r.active && r.store===viewStore && r.category==="prep")
         .map(r=>({key:"r"+r.id, name:r.name, deadline:r.deadline||"10:00", recipeId:r.recipeId||null}))
-    : [...new Set((cleanTasks||[]).filter(c=>c.store===viewStore).map(c=>c.name))]
-        .map(n=>{ const ex=(cleanTasks||[]).find(c=>c.store===viewStore&&c.name===n); return {key:"c"+n, name:n, deadline:ex?.deadline||"12:00"}; });
+    : (()=>{ // クリーンも、ルーティン一覧の並び順を先に。そのあと過去に使ったクリーンタスク
+        const fromRoutines = (routines||[]).filter(r=>r.active && r.store===viewStore && r.category==="clean")
+          .map(r=>({key:"c"+r.name, name:r.name, deadline:r.deadline||"12:00"}));
+        const seen = new Set(fromRoutines.map(x=>x.name));
+        const others = [...new Set((cleanTasks||[]).filter(c=>c.store===viewStore).map(c=>c.name))].filter(n=>!seen.has(n))
+          .map(n=>{ const ex=(cleanTasks||[]).find(c=>c.store===viewStore&&c.name===n); return {key:"c"+n, name:n, deadline:ex?.deadline||"12:00"}; });
+        return [...fromRoutines, ...others];
+      })();
   const quickAdd = (it) => {
     if (addCategory==="prep") {
       setAllPrepTasks(p=>[...p,{id:"pt"+Date.now(),name:it.name,recipeId:it.recipeId,deadline:it.deadline,store:viewStore,assignedTo:null,date:viewDate,completedAt:null,completedBy:null,amountVerified:false,amountLog:[]}]);
