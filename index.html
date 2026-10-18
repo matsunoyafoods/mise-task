@@ -3474,7 +3474,7 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
             return (
             <div key={i.id} style={{padding:"9px 0",borderBottom:"1px solid #E4E0D6"}}>
               <div style={{display:"flex",justifyContent:"space-between",gap:10}}>
-                <span style={{fontSize:14,color:"#45433F",fontWeight:700}}>{i.name}</span>
+                <span style={{fontSize:14,color:"#45433F",fontWeight:700}}>{i.name}{i.countOnOrder && <span style={{marginLeft:6,fontSize:12,fontWeight:800,color:"#7C2D12",background:"#FEF3C7",border:"1px solid #FCD34D",padding:"1px 8px",borderRadius:999,whiteSpace:"nowrap"}}>🔢 発注時に数える</span>}</span>
                 <span style={{fontSize:15,fontWeight:700,color:"#E85D04",fontFamily:"monospace"}}>発注 {getQty(i).toLocaleString()}{orderUnitOf(i)}{byCase(i)&&<span style={{fontSize:12,color:"#5F5D58",fontWeight:600}}> （約{(getQty(i)*caseSize(i)).toLocaleString()}{i.unit}）</span>}</span>
               </div>
               {i.countOnOrder && <div style={{display:"flex",alignItems:"center",gap:8,marginTop:6,flexWrap:"wrap"}}>
@@ -3579,9 +3579,9 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
               📦 発注済みで届くのを待っている商品が {onOrderLowCount}件あります（候補から外しています）。届いたら「検品」で確認してください。
             </div>
           )}
-          {Object.keys(grouped).length === 0
-            ? <div style={{color:"#6E6C66",fontSize:15,padding:24,textAlign:"center"}}>{onOrderLowCount>0 ? "ほかに発注が必要な商品はありません" : "在庫不足の商品はありません 🎉"}</div>
-            : Object.entries(grouped).map(([supplierId,items])=>{
+          {suppliers.length === 0
+            ? <div style={{color:"#6E6C66",fontSize:15,padding:24,textAlign:"center"}}>業者がまだいません。「業者一覧」から追加してください。</div>
+            : [...suppliers.filter(s=>grouped[s.id]), ...suppliers.filter(s=>!grouped[s.id])].map(s=>[s.id, grouped[s.id]||[]]).map(([supplierId,items])=>{
               const sup = suppliers.find(s=>s.id===supplierId) || {name:"(不明な業者)"};
               const method = sup.sendMethod || sup.orderMethods?.[0] || "other";
               const mc = SEND_METHOD_COLORS[method] || "#6b7280";
@@ -3610,10 +3610,13 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
                         </div>
                       </div>
                     </div>
-                    <Btn onClick={()=>sendOrder(supplierId)} color={mc} style={{fontSize:13,padding:"9px 16px"}}>
+                    <Btn onClick={()=>sendOrder(supplierId)} color={mc} disabled={!selCount} style={{fontSize:13,padding:"9px 16px"}}>
                       発注する（{selCount}件）
                     </Btn>
                   </div>
+                  {items.length===0 && (
+                    <div style={{padding:"12px 18px",fontSize:14,color:"#2F7A1F",borderBottom:"1px solid #E4E0D6"}}>✓ 発注候補はありません（在庫は足りています）。頼みたい商品があれば下から追加できます。</div>
+                  )}
                   {items.map(item=>{
                     const checked = selectedItems[item.id] !== false;
                     const qty = getQty(item);
@@ -3622,7 +3625,7 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
                       <div key={item.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 18px",borderBottom:"1px solid #E4E0D6",flexWrap:"wrap"}}>
                         <input type="checkbox" checked={checked} onChange={()=>setSelectedItems(p=>({...p,[item.id]:!checked}))} style={{width:16,height:16,cursor:"pointer"}}/>
                         <div style={{flex:1,minWidth:120}}>
-                          <div style={{fontSize:14,fontWeight:600,color:"#2C2C2A"}}>{item.name}</div>
+                          <div style={{fontSize:14,fontWeight:600,color:"#2C2C2A"}}>{item.name}{item.countOnOrder && <span style={{marginLeft:6,fontSize:12,fontWeight:800,color:"#7C2D12",background:"#FEF3C7",border:"1px solid #FCD34D",padding:"1px 8px",borderRadius:999,whiteSpace:"nowrap"}}>🔢 発注時に数える</span>}</div>
                           <div style={{fontSize:13,color:"#B42318",marginTop:2}}>在庫 {item.stock.toLocaleString()}{item.unit} / 最低 {item.minStock.toLocaleString()}{item.unit}</div>
                         </div>
                         <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -3652,7 +3655,7 @@ function OrderView({inspectOnly=false, inventory, setInventory, suppliers, setSu
                               <div key={item.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",borderBottom:"1px solid #F0ECE4",flexWrap:"wrap"}}>
                                 <input type="checkbox" checked={on} onChange={()=>setExtraPicked(p=>({...p,[item.id]:!on}))} style={{width:18,height:18,cursor:"pointer",accentColor:"#E8792F"}}/>
                                 <div style={{flex:1,minWidth:120}}>
-                                  <div style={{fontSize:14,fontWeight:600,color:"#2C2C2A"}}>{item.name}</div>
+                                  <div style={{fontSize:14,fontWeight:600,color:"#2C2C2A"}}>{item.name}{item.countOnOrder && <span style={{marginLeft:6,fontSize:12,fontWeight:800,color:"#7C2D12",background:"#FEF3C7",border:"1px solid #FCD34D",padding:"1px 8px",borderRadius:999,whiteSpace:"nowrap"}}>🔢 発注時に数える</span>}</div>
                                   <div style={{fontSize:13,color:"#5F5D58",marginTop:2}}>在庫 {Number(item.stock||0).toLocaleString()}{item.unit}</div>
                                 </div>
                                 {on && (
