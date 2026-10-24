@@ -34,6 +34,7 @@ const KV_RESOURCES = [
   "stores", "users", "suppliers", "inventory", "orders", "recipes", "routines",
   "prepTasks", "cleanTasks", "taskCats", "openItems", "closeItems",
   "priceHistory", "hqTasks", "pointConfig", "demandConfig", "lastCarryDate",
+  "wasteLogs", // ロス・廃棄の記録
 ];
 
 function path(req: Request): string[] {
@@ -354,6 +355,7 @@ async function bootstrap(c: AppClaims): Promise<Response> {
     pointConfig: st.pointConfig ?? null,
     demandConfig: st.demandConfig ?? null,
     lastCarryDate: st.lastCarryDate ?? null,
+    wasteLogs: st.wasteLogs ?? [],
     versions, // 楽観的ロック用（resource→updated_at）
   });
 }

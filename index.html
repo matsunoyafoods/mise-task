@@ -4233,7 +4233,169 @@ function CommissionView({allPrepTasks, cleanTasks, pointConfig, setPointConfig, 
 }
 
 // ─── INVENTORY VIEW (simplified) ───
-function InventoryView({inventory, setInventory, notify, storeFilter, currentUserId, stores, stocktakes=[], setStocktakes, users=[], currentRole}) {
+// ─── ロス・廃棄 ───────────────────────────────────────────────
+//   記録すると在庫からその分を減らし、理由・金額を履歴(wasteLogs)に残す
+const WASTE_REASONS = [["spoiled","🦠 傷み・期限切れ"],["mistake","💥 落とした・失敗"],["over","🍱 作りすぎ・売れ残り"],["other","📝 その他"]];
+const wasteReasonLabel = k => (WASTE_REASONS.find(r=>r[0]===k)||[,"📝 その他"])[1];
+// 1単位（在庫の単位）あたりの単価。ケース単価の商品はケースの中身で割る
+const wasteUnitCost = it => { const p = Number(it?.unitPrice)||0, bs = Number(it?.bagSize)||0; return (it?.orderByCase && bs>0) ? p/bs : p; };
+const jstDate = iso => new Date(new Date(iso).getTime() + 9*3600e3);
+const jstYm = iso => jstDate(iso).toISOString().slice(0,7);
+const fmtJstShort = iso => { const d = jstDate(iso); return `${d.getUTCMonth()+1}/${d.getUTCDate()} ${String(d.getUTCHours()).padStart(2,"0")}:${String(d.getUTCMinutes()).padStart(2,"0")}`; };
+const yen = n => "¥" + Math.round(Number(n)||0).toLocaleString();
+
+function WasteCenter({initialTab="record", presetItemId=null, storeId=null, inventory=[], wasteLogs=[], currentUserId, onRecord, onUndo, onClose}) {
+  const [tab, setTab] = useState(initialTab);
+  const items = inventory.filter(i => storeId==null || String(i.storeId)===String(storeId));
+  const storeName = id => ((INITIAL_STORES||[]).find(s=>String(s.id)===String(id))||{}).name || "";
+  const [itemId, setItemId] = useState(presetItemId || "");
+  const [q, setQ] = useState("");
+  const [qty, setQty] = useState("");
+  const [inBags, setInBags] = useState(false);
+  const [reason, setReason] = useState("");
+  const [memo, setMemo] = useState("");
+  const item = inventory.find(i => i.id === itemId) || null;
+  const bagSize = Number(item?.bagSize)||0;
+  const qtyBase = (Number(qty)||0) * (inBags && bagSize>0 ? bagSize : 1);
+  const amount = item ? qtyBase * wasteUnitCost(item) : 0;
+  const canSave = item && qtyBase > 0 && reason && (reason!=="other" || memo.trim());
+
+  const save = () => {
+    if (!canSave) return;
+    const me = (INITIAL_USERS||[]).find(u => String(u.id)===String(currentUserId));
+    onRecord({
+      id: "w" + Date.now() + Math.random().toString(36).slice(2,6),
+      at: new Date().toISOString(),
+      storeId: item.storeId ?? storeId, itemId: item.id, name: item.name,
+      qty: Math.round(qtyBase*1000)/1000, unit: item.unit,
+      unitCost: Math.round(wasteUnitCost(item)*100)/100, amount: Math.round(amount),
+      reason, memo: memo.trim(), by: currentUserId ?? null, byName: me?.name || "",
+    });
+    setItemId(presetItemId ? "" : ""); setQty(""); setInBags(false); setReason(""); setMemo(""); setQ("");
+    if (presetItemId) onClose(); else setTab("history");
+  };
+
+  // 集計
+  const thisYm = jstYm(new Date().toISOString());
+  const [ym, setYm] = useState(thisYm);
+  const shiftYm = (d) => { const [y,m] = ym.split("-").map(Number); const t = new Date(Date.UTC(y, m-1+d, 1)); setYm(t.toISOString().slice(0,7)); };
+  const logs = (wasteLogs||[]).filter(l => (storeId==null || String(l.storeId)===String(storeId)) && jstYm(l.at)===ym);
+  const total = logs.reduce((a,l)=>a+(Number(l.amount)||0),0);
+  const byReason = WASTE_REASONS.map(([k,lab]) => [lab, logs.filter(l=>l.reason===k).reduce((a,l)=>a+(Number(l.amount)||0),0), logs.filter(l=>l.reason===k).length]).filter(r=>r[2]>0);
+  const byItem = Object.values(logs.reduce((m,l)=>{ const k=l.name; m[k]=m[k]||{name:k,amount:0,qty:0,unit:l.unit,count:0}; m[k].amount+=Number(l.amount)||0; m[k].qty+=Number(l.qty)||0; m[k].count++; return m; },{})).sort((a,b)=>b.amount-a.amount).slice(0,5);
+
+  const tabBtn = (id,label) => (
+    <button onClick={()=>setTab(id)} style={{flex:1,padding:"10px",borderRadius:10,border:"none",cursor:"pointer",fontSize:15,fontWeight:800,background:tab===id?"#B42318":"#ECE9E1",color:tab===id?"#fff":"#5F5D58"}}>{label}</button>
+  );
+  const shownItems = items.filter(i => !q || String(i.name||"").includes(q));
+
+  return (
+    <Modal onClose={onClose} width={520}>
+      <div style={{fontSize:18,fontWeight:800,color:"#2C2C2A",marginBottom:4}}>🗑 ロス・廃棄</div>
+      <div style={{fontSize:13,color:"#5F5D58",marginBottom:12}}>悪くなった材料や、捨てたものを記録します。記録した分は在庫から減ります。{storeId!=null && <span data-notranslate="1">（{storeName(storeId)}）</span>}</div>
+      <div style={{display:"flex",gap:8,marginBottom:14}}>{tabBtn("record","記録する")}{tabBtn("history","集計・履歴")}</div>
+
+      {tab==="record" && (!item ? (
+        <div>
+          <div style={{fontSize:14,fontWeight:700,color:"#2C2C2A",marginBottom:6}}>① 捨てる商品を選んでください</div>
+          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="商品名でさがす" style={{width:"100%",padding:"10px 12px",border:"1px solid #E4E0D6",borderRadius:10,fontSize:15,marginBottom:8}}/>
+          <div style={{maxHeight:"45vh",overflowY:"auto",border:"1px solid #EDE7DD",borderRadius:12}}>
+            {shownItems.length===0 && <div style={{padding:14,fontSize:14,color:"#6E6C66"}}>商品がありません</div>}
+            {shownItems.map(i => (
+              <button key={i.id} onClick={()=>{ setItemId(i.id); setInBags(false); }} style={{display:"flex",justifyContent:"space-between",width:"100%",padding:"12px 14px",background:"#FFFFFF",border:"none",borderBottom:"1px solid #EFEAE0",cursor:"pointer",textAlign:"left",fontSize:15,color:"#2C2C2A"}}>
+                <span style={{fontWeight:700}}>{i.name}{storeId==null && <span data-notranslate="1" style={{fontSize:12,color:"#6E6C66",fontWeight:400}}> {storeName(i.storeId)}</span>}</span>
+                <span style={{fontSize:13,color:"#5F5D58"}}>在庫 {Number(i.stock||0).toLocaleString()}{i.unit}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",background:"#FBFAF7",border:"1px solid #EDE7DD",borderRadius:12,marginBottom:12}}>
+            <div>
+              <div style={{fontSize:16,fontWeight:800,color:"#2C2C2A"}}>{item.name}</div>
+              <div style={{fontSize:13,color:"#5F5D58"}}>今の在庫 {Number(item.stock||0).toLocaleString()}{item.unit}</div>
+            </div>
+            {!presetItemId && <button onClick={()=>setItemId("")} style={{padding:"6px 12px",background:"#ECE9E1",border:"none",borderRadius:8,fontSize:13,fontWeight:700,color:"#45433F",cursor:"pointer"}}>変更</button>}
+          </div>
+
+          <div style={{fontSize:14,fontWeight:700,color:"#2C2C2A",marginBottom:6}}>② 捨てる量</div>
+          <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
+            <input type="number" inputMode="decimal" min="0" value={qty} onChange={e=>setQty(e.target.value)} placeholder="0" style={{flex:1,padding:"12px",border:"1px solid #E4E0D6",borderRadius:10,fontSize:20,fontWeight:800,textAlign:"right"}}/>
+            {bagSize>0 ? (
+              <div style={{display:"flex",gap:4}}>
+                {[[false,item.unit],[true,item.bagUnit||"袋"]].map(([b,u])=>(
+                  <button key={String(b)} onClick={()=>setInBags(b)} style={{padding:"10px 12px",borderRadius:8,border:"none",cursor:"pointer",fontSize:15,fontWeight:800,background:inBags===b?"#2C2C2A":"#ECE9E1",color:inBags===b?"#fff":"#5F5D58"}}>{u}</button>
+                ))}
+              </div>
+            ) : <span style={{fontSize:16,fontWeight:700,color:"#45433F"}}>{item.unit}</span>}
+          </div>
+          {inBags && bagSize>0 && qtyBase>0 && <div style={{fontSize:13,color:"#0369A1",marginBottom:6}}>＝ {qtyBase.toLocaleString()}{item.unit}</div>}
+          {qtyBase > Number(item.stock||0) && <div style={{fontSize:13,color:"#A16207",marginBottom:6}}>⚠ 今の在庫より多いです。在庫は0になります。</div>}
+
+          <div style={{fontSize:14,fontWeight:700,color:"#2C2C2A",margin:"12px 0 6px"}}>③ 理由</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+            {WASTE_REASONS.map(([k,lab])=>(
+              <button key={k} onClick={()=>setReason(k)} style={{padding:"12px 8px",borderRadius:10,cursor:"pointer",fontSize:14,fontWeight:800,border:reason===k?"2px solid #B42318":"2px solid #EDE3D6",background:reason===k?"#FDEDEC":"#FFFFFF",color:"#2C2C2A"}}>{lab}</button>
+            ))}
+          </div>
+          <textarea value={memo} onChange={e=>setMemo(e.target.value)} rows={2} placeholder={reason==="other"?"理由を書いてください（必須）":"メモ（なくてもOK）"} style={{width:"100%",padding:"10px 12px",border:"1px solid #E4E0D6",borderRadius:10,fontSize:14,marginBottom:10,resize:"vertical"}}/>
+
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",background:"#FDEDEC",borderRadius:10,marginBottom:12}}>
+            <span style={{fontSize:14,color:"#B42318",fontWeight:700}}>ロス金額（目安）</span>
+            <span style={{fontSize:20,color:"#B42318",fontWeight:800}}>{yen(amount)}</span>
+          </div>
+          <Btn onClick={save} disabled={!canSave} color="#B42318" style={{width:"100%",padding:"14px",fontSize:16}}>🗑 記録して在庫から減らす</Btn>
+        </div>
+      ))}
+
+      {tab==="history" && (
+        <div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:14,marginBottom:10}}>
+            <button onClick={()=>shiftYm(-1)} style={{padding:"6px 12px",background:"#ECE9E1",border:"none",borderRadius:8,cursor:"pointer",fontWeight:800}}>◀</button>
+            <span style={{fontSize:16,fontWeight:800,color:"#2C2C2A"}}>{Number(ym.slice(0,4))}年{Number(ym.slice(5,7))}月</span>
+            <button onClick={()=>shiftYm(1)} disabled={ym>=thisYm} style={{padding:"6px 12px",background:"#ECE9E1",border:"none",borderRadius:8,cursor:ym>=thisYm?"default":"pointer",fontWeight:800,opacity:ym>=thisYm?0.4:1}}>▶</button>
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",background:"#FDEDEC",borderRadius:12,marginBottom:12}}>
+            <span style={{fontSize:14,color:"#B42318",fontWeight:700}}>ロス合計（{logs.length}件）</span>
+            <span style={{fontSize:24,color:"#B42318",fontWeight:800}}>{yen(total)}</span>
+          </div>
+          {logs.length>0 && (
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+              <div style={{border:"1px solid #EDE7DD",borderRadius:12,padding:"10px 12px"}}>
+                <div style={{fontSize:13,fontWeight:800,color:"#5F5D58",marginBottom:6}}>理由別</div>
+                {byReason.map(([lab,amt,n])=>(<div key={lab} style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"2px 0"}}><span>{lab}</span><span style={{fontWeight:700}}>{yen(amt)}</span></div>))}
+              </div>
+              <div style={{border:"1px solid #EDE7DD",borderRadius:12,padding:"10px 12px"}}>
+                <div style={{fontSize:13,fontWeight:800,color:"#5F5D58",marginBottom:6}}>多い商品</div>
+                {byItem.map(r=>(<div key={r.name} style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"2px 0",gap:6}}><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.name}</span><span style={{fontWeight:700,flexShrink:0}}>{yen(r.amount)}</span></div>))}
+              </div>
+            </div>
+          )}
+          <div style={{maxHeight:"40vh",overflowY:"auto",border:"1px solid #EDE7DD",borderRadius:12}}>
+            {logs.length===0 && <div style={{padding:14,fontSize:14,color:"#6E6C66",textAlign:"center"}}>この月の記録はありません</div>}
+            {logs.map(l=>(
+              <div key={l.id} style={{padding:"10px 12px",borderBottom:"1px solid #EFEAE0",background:"#FFFFFF"}}>
+                <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
+                  <span style={{fontSize:15,fontWeight:800,color:"#2C2C2A"}}>{l.name} <span style={{fontWeight:600,color:"#5F5D58"}}>{Number(l.qty).toLocaleString()}{l.unit}</span></span>
+                  <span style={{fontSize:15,fontWeight:800,color:"#B42318"}}>{yen(l.amount)}</span>
+                </div>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginTop:4}}>
+                  <span style={{fontSize:12,color:"#6E6C66"}}>{fmtJstShort(l.at)} · {wasteReasonLabel(l.reason)}{storeId==null?<span data-notranslate="1"> · {storeName(l.storeId)}</span>:null}{l.byName?<span data-notranslate="1"> · {l.byName}</span>:null}</span>
+                  <button onClick={()=>onUndo(l)} style={{padding:"3px 10px",fontSize:12,background:"#ECE9E1",border:"none",borderRadius:6,color:"#5F5D58",cursor:"pointer",flexShrink:0}}>取り消す</button>
+                </div>
+                {l.memo && <div style={{fontSize:13,color:"#45433F",marginTop:4}}>📝 {l.memo}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <div style={{marginTop:12}}><Btn onClick={onClose} color="#ECE9E1" style={{width:"100%",padding:"12px",color:"#5F5D58"}}>閉じる</Btn></div>
+    </Modal>
+  );
+}
+
+function InventoryView({inventory, setInventory, notify, storeFilter, currentUserId, stores, stocktakes=[], setStocktakes, users=[], currentRole, onWaste}) {
   const [activeStore, setActiveStore] = useState(storeFilter || 1);
   const [tab, setTab] = useState("stock");
   const [showForm, setShowForm] = useState(false);
@@ -4416,6 +4578,7 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
           <div>
             <span style={{fontSize:15,fontWeight:700,color:"#2C2C2A"}}>{item.name}</span>
             <button onClick={()=>openEdit(item)} style={{marginLeft:8,padding:"1px 7px",fontSize:12,background:"#ECE9E1",border:"1px solid #E4E0D6",color:"#5F5D58",borderRadius:5,cursor:"pointer"}}>編集</button>
+            {onWaste && <button onClick={()=>onWaste({itemId:item.id, storeId:item.storeId})} style={{marginLeft:6,padding:"1px 8px",fontSize:12,fontWeight:700,background:"#FDEDEC",border:"1px solid #F5C2C0",color:"#B42318",borderRadius:5,cursor:"pointer"}}>🗑 ロス</button>}
             <button onClick={()=>{ if(window.confirm(`「${item.name}」を削除しますか？`)){ setInventory(p=>p.filter(x=>x.id!==item.id)); notify("商品を削除しました","warn"); } }} style={{marginLeft:6,padding:"1px 7px",fontSize:12,background:"rgba(239,68,68,0.12)",border:"1px solid #ef444455",color:"#B42318",borderRadius:5,cursor:"pointer"}}>削除</button>
           </div>
           <div style={{textAlign:"right"}}>
@@ -4443,6 +4606,7 @@ function InventoryView({inventory, setInventory, notify, storeFilter, currentUse
         </div>
         <div style={{display:"flex",gap:8}}>
           {!storeFilter && currentUserId !== null && <div style={{display:"flex",gap:6}}>{INITIAL_STORES.map(s=><button key={s.id} onClick={()=>setActiveStore(s.id)} style={{padding:"7px 16px",borderRadius:20,border:"none",cursor:"pointer",fontSize:13,background:activeStore===s.id?"#0077B6":"#ECE9E1",color:activeStore===s.id?"#fff":"#5F5D58"}}>{s.name}</button>)}</div>}
+          {onWaste && <Btn onClick={()=>onWaste({tab:"history", storeId:storeFilter ?? null})} color="#B42318">🗑 ロス・廃棄</Btn>}
           {(INITIAL_STORES||[]).length>1 && <Btn onClick={()=>setCopyModal(true)} color="#6D28D9">📋 他店舗にコピー</Btn>}
           <Btn onClick={openNew} color="#0077B6">＋ 商品登録</Btn>
         </div>
@@ -5172,7 +5336,7 @@ function TaskManagerView({routines, setRoutines, allPrepTasks, setAllPrepTasks, 
 // ─────────────────────────────────────────────────────────────────────────
 // TOP VIEW  直感的なメイン操作画面
 // ─────────────────────────────────────────────────────────────────────────
-function TopView({hideStockAlert=false, allPrepTasks, setAllPrepTasks, cleanTasks, setCleanTasks, inventory, setInventory, recipes, currentUserId, notify, storeFilter, routines=[], paletteDrag, setPaletteDrag, extDragTask, setExtDragTask, extDragOver, setExtDragOver, onDayChange, onStoreChange}) {
+function TopView({onWaste, hideStockAlert=false, allPrepTasks, setAllPrepTasks, cleanTasks, setCleanTasks, inventory, setInventory, recipes, currentUserId, notify, storeFilter, routines=[], paletteDrag, setPaletteDrag, extDragTask, setExtDragTask, extDragOver, setExtDragOver, onDayChange, onStoreChange}) {
   const [activeDay, setActiveDay_]   = useState(0); // 0=今日, 1=明日, 2=明後日, 3=3日後
   const [activeStore, setActiveStore_] = useState(storeFilter || 1);
   const setActiveDay = (v) => { setActiveDay_(v); if(onDayChange) onDayChange(v); };
@@ -5551,12 +5715,20 @@ function TopView({hideStockAlert=false, allPrepTasks, setAllPrepTasks, cleanTask
               <div style={{width:10,height:10,borderRadius:"50%",background:"#fb923c"}}/>
               <span style={{fontSize:14,fontWeight:700,color:"#5F5D58"}}>未完了 {todo.length}</span>
             </div>
+            <div style={{display:"flex",gap:6}}>
+            {onWaste && (
+              <button onClick={()=>onWaste({storeId:activeStore})}
+                style={{padding:"7px 12px",borderRadius:999,background:"#FFFFFF",border:"2px solid #F5C2C0",color:"#B42318",fontSize:14,fontWeight:800,cursor:"pointer",lineHeight:1}}>
+                🗑 ロス・廃棄
+              </button>
+            )}
             {isEditable && (
               <button onClick={()=>setShowAdd(true)}
                 style={{padding:"7px 14px",borderRadius:999,background:"#E8792F",border:"none",color:"#fff",fontSize:14,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",gap:4,lineHeight:1}}>
                 ＋ タスクを追加
               </button>
             )}
+            </div>
           </div>
 
           {todo.length===0 && (
@@ -6948,6 +7120,8 @@ function AppInner() {
   const [cleanTasks, setCleanTasks] = useState([]);
   const [hqTasks, setHqTasks] = useState([]);
   const [stocktakes, setStocktakes] = useState([]);
+  const [wasteLogs, setWasteLogs] = useState([]);   // ロス・廃棄の記録
+  const [wasteOpen, setWasteOpen] = useState(null);  // {tab, itemId, storeId}
   const [users, setUsers] = useState(INITIAL_USERS);
   const [stores, setStores] = useState(INITIAL_STORES);
   const [recipes, setRecipes] = useState(INITIAL_RECIPES);
@@ -7038,6 +7212,7 @@ function AppInner() {
     setPointConfig(data?.pointConfig || DEFAULT_POINT_CONFIG);
     setDemandConfig(data?.demandConfig || DEFAULT_DEMAND);
     setLastCarryDate(data?.lastCarryDate || null);
+    setWasteLogs(data?.wasteLogs || []);
     versionsRef.current = data?.versions || {}; // 各リソースのバージョンを記録
   };
 
@@ -7047,7 +7222,7 @@ function AppInner() {
       stores:setStores, users:setUsers, suppliers:setSuppliers, inventory:setInventory,
       priceHistory:setPriceHistory, orders:setOrders, recipes:setRecipes, routines:setRoutines,
       prepTasks:setAllPrepTasks, cleanTasks:setCleanTasks, openItems:setOpenItems,
-      closeItems:setCloseItems, taskCats:setTaskCats, hqTasks:setHqTasks,
+      closeItems:setCloseItems, taskCats:setTaskCats, hqTasks:setHqTasks, wasteLogs:setWasteLogs,
     };
     const s = setters[resource];
     if (s) s(resource==="suppliers" ? normalizeSuppliers(serverData ?? []) : (serverData ?? []));
@@ -7168,6 +7343,7 @@ function AppInner() {
   useRemoteStateSync(syncEnabled, "openItems", openItems, notify, versionsRef, applyServer);
   useRemoteStateSync(syncEnabled, "closeItems", closeItems, notify, versionsRef, applyServer);
   useRemoteStateSync(syncEnabled, "hqTasks", hqTasks, notify, versionsRef, applyServer);
+  useRemoteStateSync(syncEnabled, "wasteLogs", wasteLogs, notify, versionsRef, applyServer);
   useRemoteStateSync(syncEnabled, "pointConfig", pointConfig, notify, versionsRef, applyServer);
   useRemoteStateSync(syncEnabled, "demandConfig", demandConfig, notify, versionsRef, applyServer);
   useRemoteStateSync(syncEnabled && lastCarryDate !== undefined, "lastCarryDate", lastCarryDate, notify, versionsRef, applyServer);
@@ -7215,6 +7391,18 @@ function AppInner() {
     }).finally(() => { trBusyRef.current = false; setTrTick(t=>t+1); });
   }, [syncEnabled, demoMode, isBootstrapping, trSources, trDict, trTick]);
   const [trEditLang, setTrEditLang] = useState(null);
+  // ロス・廃棄：在庫を減らして記録を残す／取り消すと在庫を戻す
+  const recordWaste = (e) => {
+    setInventory(p => p.map(i => i.id===e.itemId ? {...i, stock: Math.max(0, Math.round((Number(i.stock||0) - e.qty)*1000)/1000)} : i));
+    setWasteLogs(p => [e, ...(p||[])].slice(0, 5000));
+    notify(`✓ ロスを記録しました（${e.name} ${Number(e.qty).toLocaleString()}${e.unit}）`);
+  };
+  const undoWaste = (l) => {
+    if (!window.confirm(`「${l.name} ${Number(l.qty).toLocaleString()}${l.unit}」の記録を取り消して、在庫を戻しますか？`)) return;
+    setInventory(p => p.map(i => i.id===l.itemId ? {...i, stock: Math.round((Number(i.stock||0) + Number(l.qty||0))*1000)/1000} : i));
+    setWasteLogs(p => (p||[]).filter(x => x.id!==l.id));
+    notify("記録を取り消し、在庫を戻しました", "warn");
+  };
   const saveTrEdit = (src, value) => {
     const map = {[src]: {[trEditLang]: value}};
     const o = {edit: trEditLang};
@@ -7411,6 +7599,8 @@ function AppInner() {
 
       {demoMode && showTour && <DemoTour onClose={()=>setShowTour(false)} />}
 
+      {wasteOpen && <WasteCenter initialTab={wasteOpen.tab||"record"} presetItemId={wasteOpen.itemId||null} storeId={wasteOpen.storeId ?? null}
+        inventory={inventory} wasteLogs={wasteLogs} currentUserId={currentUserId} onRecord={recordWaste} onUndo={undoWaste} onClose={()=>setWasteOpen(null)}/>}
       {trEditLang && <TranslationEditor lang={trEditLang} sources={trSources} dataDict={trDict} onSave={saveTrEdit} onClose={()=>setTrEditLang(null)}/>}
 
       {showSwitch && storeMode && (
@@ -7712,11 +7902,11 @@ function AppInner() {
               })}
             </div>
           )}
-          {view==="top"       &&<TopView hideStockAlert={isFrontStaff} allPrepTasks={allPrepTasks} setAllPrepTasks={setAllPrepTasks} cleanTasks={cleanTasks} setCleanTasks={setCleanTasks} inventory={inventory} setInventory={setInventory} recipes={recipes} currentUserId={currentUserId} notify={notify} storeFilter={storeFilter} routines={routines} paletteDrag={paletteDrag} setPaletteDrag={setPaletteDrag} extDragTask={topDragTask} setExtDragTask={setTopDragTask} extDragOver={topDragOver} setExtDragOver={setTopDragOver} onDayChange={setTopActiveDay} onStoreChange={setTopActiveStore}/>}
+          {view==="top"       &&<TopView onWaste={setWasteOpen} hideStockAlert={isFrontStaff} allPrepTasks={allPrepTasks} setAllPrepTasks={setAllPrepTasks} cleanTasks={cleanTasks} setCleanTasks={setCleanTasks} inventory={inventory} setInventory={setInventory} recipes={recipes} currentUserId={currentUserId} notify={notify} storeFilter={storeFilter} routines={routines} paletteDrag={paletteDrag} setPaletteDrag={setPaletteDrag} extDragTask={topDragTask} setExtDragTask={setTopDragTask} extDragOver={topDragOver} setExtDragOver={setTopDragOver} onDayChange={setTopActiveDay} onStoreChange={setTopActiveStore}/>}
           {view==="dashboard" && <Dashboard allPrepTasks={allPrepTasks} cleanTasks={cleanTasks} hqTasks={hqTasks} setHqTasks={setHqTasks} currentUserId={currentUserId} inventory={inventory} orders={orders} storeFilter={storeFilter} notify={notify}/>}
           {view==="prep"      && <PrepView allTasks={allPrepTasks} setAllTasks={setAllPrepTasks} currentUserId={currentUserId} recipes={recipes} notify={notify} setInventory={setInventory} storeFilter={storeFilter}/>}
           {view==="clean"     && <CleanView tasks={cleanTasks} setTasks={setCleanTasks} currentUserId={currentUserId} notify={notify} storeFilter={storeFilter}/>}
-        {view==="inventory" && <InventoryView inventory={inventory} setInventory={setInventory} notify={notify} storeFilter={storeFilter} currentUserId={currentUserId} stores={stores} stocktakes={stocktakes} setStocktakes={setStocktakes} users={users} currentRole={myRole}/>}
+        {view==="inventory" && <InventoryView inventory={inventory} setInventory={setInventory} notify={notify} storeFilter={storeFilter} currentUserId={currentUserId} stores={stores} stocktakes={stocktakes} setStocktakes={setStocktakes} users={users} currentRole={myRole} onWaste={setWasteOpen}/>}
           {view==="inspect"   && <OrderView inspectOnly inventory={inventory} setInventory={setInventory} suppliers={suppliers} setSuppliers={setSuppliers} orders={orders} setOrders={setOrders} priceHistory={priceHistory} setPriceHistory={setPriceHistory} currentUserId={currentUserId} notify={notify} storeFilter={storeFilter} demandConfig={demandConfig} setDemandConfig={setDemandConfig} refreshSuppliers={syncEnabled ? refreshSuppliers : null}/>}
           {view==="order"     && <OrderView inventory={inventory} setInventory={setInventory} suppliers={suppliers} setSuppliers={setSuppliers} orders={orders} setOrders={setOrders} priceHistory={priceHistory} setPriceHistory={setPriceHistory} currentUserId={currentUserId} notify={notify} storeFilter={storeFilter} demandConfig={demandConfig} setDemandConfig={setDemandConfig} refreshSuppliers={syncEnabled ? refreshSuppliers : null}/>}
           {view==="tasks"     && <TaskManagerView routines={routines} setRoutines={setRoutines} allPrepTasks={allPrepTasks} setAllPrepTasks={setAllPrepTasks} cleanTasks={cleanTasks} setCleanTasks={setCleanTasks} notify={notify} storeFilter={storeFilter} taskCats={taskCats} saveTaskCats={saveTaskCats} recipes={recipes} setRecipes={setRecipes} inventory={inventory}/>}
