@@ -5363,6 +5363,8 @@ function TopView({onWaste, hideStockAlert=false, allPrepTasks, setAllPrepTasks, 
 
   // 全日程で編集可能（ログイン中のみ）
   const isEditable = currentUserId !== null;
+  // タスクの追加はだれでもできる（お店の画面・スタッフも）。削除は名前で入っている人だけ
+  const canAdd = true;
 
   // その日のタスクを全部取得
   const prepToday  = allPrepTasks.filter(t => t.store===viewStore && t.date===viewDate);
@@ -5722,7 +5724,7 @@ function TopView({onWaste, hideStockAlert=false, allPrepTasks, setAllPrepTasks, 
                 🗑 ロス・廃棄
               </button>
             )}
-            {isEditable && (
+            {canAdd && (
               <button onClick={()=>setShowAdd(true)}
                 style={{padding:"7px 14px",borderRadius:999,background:"#E8792F",border:"none",color:"#fff",fontSize:14,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",gap:4,lineHeight:1}}>
                 ＋ タスクを追加
@@ -5733,7 +5735,7 @@ function TopView({onWaste, hideStockAlert=false, allPrepTasks, setAllPrepTasks, 
 
           {todo.length===0 && (
             <div style={{color:"#6E6C66",fontSize:14,textAlign:"center",padding:"40px 20px",border:"2px dashed #E4E0D6",borderRadius:12}}>
-              {isEditable ? "＋ボタンでタスクを追加" : "タスクなし"}
+              {canAdd ? "＋ボタンでタスクを追加" : "タスクなし"}
             </div>
           )}
 
@@ -7829,7 +7831,7 @@ function AppInner() {
           })}
 
           {/* ── タスク追加カード（TOP用・仕込み/クリーン/カスタム） ── */}
-          {view==="top" && !(storeMode && currentUserId==null) && (()=>{
+          {view==="top" && (()=>{
             const viewStore = topActiveStore || storeFilter || 1;
             const ritems = (routines||[]).filter(r=>r.active && r.store===viewStore);
             const prepItems  = ritems.filter(r=>r.category==="prep").map(r=>({id:r.id,name:r.name,category:"prep",deadline:r.deadline,recipeId:r.recipeId}));
