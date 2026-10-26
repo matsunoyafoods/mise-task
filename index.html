@@ -1881,7 +1881,7 @@ function SupplierSelfRegModal({token, suppliers, setSuppliers, onClose}) {
 // ─── DASHBOARD ───
 function Dashboard({allPrepTasks, cleanTasks, hqTasks, setHqTasks, currentUserId, inventory, orders, storeFilter, notify}) {
   const todayPrep = allPrepTasks.filter(t=>t.date===todayStr && (storeFilter ? t.store===storeFilter : true));
-  const todayClean = cleanTasks.filter(t=>storeFilter ? t.store===storeFilter : true);
+  const todayClean = cleanTasks.filter(t=>(storeFilter ? t.store===storeFilter : true) && (!t.date || t.date===todayStr));
   const lowStock = inventory.filter(i=>i.stock<=i.minStock);
   const pendingOrders = orders.filter(o=>!o.inspected && o.status==="sent" && (storeFilter ? o.storeId===storeFilter : true));
   const warns = allPrepTasks.filter(t=>t.amountLog?.some(l=>!l.ok) && t.date===todayStr);
@@ -2046,7 +2046,7 @@ function Dashboard({allPrepTasks, cleanTasks, hqTasks, setHqTasks, currentUserId
             <div style={{fontSize:14,fontWeight:700,color:"#5F5D58",marginBottom:16}}>店舗別 進捗</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
               {INITIAL_STORES.map(store => {
-                const st = [...allPrepTasks.filter(t=>t.date===todayStr&&t.store===store.id),...cleanTasks.filter(t=>t.store===store.id)];
+                const st = [...allPrepTasks.filter(t=>t.date===todayStr&&t.store===store.id),...cleanTasks.filter(t=>t.store===store.id && (!t.date || t.date===todayStr))];
                 const sd = st.filter(t=>t.completedAt).length;
                 return (
                   <div key={store.id} style={{background:"#FFFFFF",borderRadius:10,padding:16}}>
@@ -3320,7 +3320,16 @@ function CleanView({tasks, setTasks, currentUserId, notify, storeFilter}) {
   const [addName, setAddName] = useState("");
   const [addArea, setAddArea] = useState("");
   const [addDeadline, setAddDeadline] = useState("12:00");
-  const filtered = tasks.filter(t=>t.store===activeStore);
+  const [editId, setEditId] = useState(null); // 編集中のタスク
+  // 日付つき（ルーティンから作られた）そうじは今日の分だけ。日付なしは今までどおり全部
+  const filtered = tasks.filter(t=>t.store===activeStore && (!t.date || t.date===todayStr));
+  const openEditClean = (task) => { setEditId(task.id); setAddName(task.name||""); setAddArea(task.area==="その他"?"":(task.area||"")); setAddDeadline(task.deadline||"12:00"); setShowAdd(true); };
+  const closeForm = () => { setShowAdd(false); setEditId(null); setAddName(""); setAddArea(""); setAddDeadline("12:00"); };
+  const deleteClean = (task) => {
+    if (!window.confirm(`「${task.name}」を削除しますか？`)) return;
+    setTasks(p=>p.filter(t=>t.id!==task.id));
+    notify("「"+task.name+"」を削除しました","warn");
+  };
   const complete = (task, staffIds) => {
     setTasks(p=>p.map(t=>t.id===task.id?{...t,completedAt:nowTime(),completedBy:staffIds}:t));
     setStaffPickClean(null);
@@ -3328,21 +3337,26 @@ function CleanView({tasks, setTasks, currentUserId, notify, storeFilter}) {
   };
   const addClean = () => {
     if (!addName.trim()) { notify("タスク名を入力してください","warn"); return; }
-    setTasks(p=>[...p,{id:"ct"+Date.now(),name:addName.trim(),area:addArea.trim()||"その他",deadline:addDeadline,store:activeStore,assignedTo:null,completedAt:null,completedBy:null,points:2}]);
-    setAddName(""); setAddArea(""); setAddDeadline("12:00"); setShowAdd(false);
-    notify("✓ クリーンタスクを追加しました");
+    if (editId) {
+      setTasks(p=>p.map(t=>t.id===editId?{...t,name:addName.trim(),area:addArea.trim()||"その他",deadline:addDeadline}:t));
+      notify("✓ そうじタスクを変更しました");
+    } else {
+      setTasks(p=>[...p,{id:"ct"+Date.now(),name:addName.trim(),area:addArea.trim()||"その他",deadline:addDeadline,store:activeStore,assignedTo:null,completedAt:null,completedBy:null,points:2}]);
+      notify("✓ クリーンタスクを追加しました");
+    }
+    closeForm();
   };
   return (
     <div>
       {showAdd && (
-        <Modal onClose={()=>setShowAdd(false)} width={380}>
-          <div style={{fontSize:17,fontWeight:800,color:"#2C2C2A",marginBottom:16}}>✦ クリーンタスクを追加</div>
+        <Modal onClose={closeForm} width={380}>
+          <div style={{fontSize:17,fontWeight:800,color:"#2C2C2A",marginBottom:16}}>{editId?"✏️ そうじタスクを編集":"✦ クリーンタスクを追加"}</div>
           <Input label="タスク名 *" value={addName} onChange={e=>setAddName(e.target.value)} placeholder="例: 冷蔵庫の清掃"/>
           <Input label="エリア（任意）" value={addArea} onChange={e=>setAddArea(e.target.value)} placeholder="例: キッチン"/>
           <Input label="締切時刻" type="time" value={addDeadline} onChange={e=>setAddDeadline(e.target.value)}/>
           <div style={{display:"flex",gap:10,marginTop:8}}>
-            <Btn onClick={()=>setShowAdd(false)} color="#ECE9E1" style={{color:"#5F5D58",flex:1}}>キャンセル</Btn>
-            <Btn onClick={addClean} color="#C9184A" style={{flex:1}}>追加する</Btn>
+            <Btn onClick={closeForm} color="#ECE9E1" style={{color:"#5F5D58",flex:1}}>キャンセル</Btn>
+            <Btn onClick={addClean} color="#C9184A" style={{flex:1}}>{editId?"保存する":"追加する"}</Btn>
           </div>
         </Modal>
       )}
@@ -3388,6 +3402,7 @@ function CleanView({tasks, setTasks, currentUserId, notify, storeFilter}) {
                   <span style={{fontSize:15,fontWeight:700,color:done?"#2F7A1F":"#2C2C2A"}}>{task.name}</span>
                   <Chip label={task.area} color="#C9184A" bg="#FBEAF0"/>
                   {isCarriedClean && <Chip label="⚠ 要対応" color="#B42318" bg="#FDEDEC"/>}
+                  {task.routineId && <Chip label="🔁 ルーティン" color="#0369A1" bg="#E6F1FB"/>}
                   <span style={{fontSize:13,color:"#F48C06",fontWeight:700}}>+{task.points}pt</span>
                 </div>
                 <div style={{fontSize:13,color:"#E85D04"}}>
@@ -3398,6 +3413,8 @@ function CleanView({tasks, setTasks, currentUserId, notify, storeFilter}) {
               <div style={{display:"flex",gap:8}}>
                 <StaffPicker value={task.assignedTo} onChange={id=>setTasks(p=>p.map(t=>t.id===task.id?{...t,assignedTo:id}:t))}/>
                 {!done && <Btn onClick={()=>setStaffPickClean({task})} color="#C9184A">完了</Btn>}
+                <button onClick={()=>openEditClean(task)} style={{padding:"6px 12px",fontSize:13,fontWeight:700,background:"#ECE9E1",border:"1px solid #E4E0D6",color:"#45433F",borderRadius:8,cursor:"pointer"}}>編集</button>
+                <button onClick={()=>deleteClean(task)} style={{padding:"6px 12px",fontSize:13,fontWeight:700,background:"rgba(239,68,68,0.10)",border:"1px solid #ef444455",color:"#B42318",borderRadius:8,cursor:"pointer"}}>削除</button>
               </div>
             </div>
           </div>
@@ -5368,11 +5385,11 @@ function TopView({onWaste, hideStockAlert=false, allPrepTasks, setAllPrepTasks, 
 
   // その日のタスクを全部取得
   const prepToday  = allPrepTasks.filter(t => t.store===viewStore && t.date===viewDate);
-  const cleanToday = cleanTasks.filter(t => t.store===viewStore);
-  // cleanTasksには日付がないので今日のみ表示
+  // 日付なしのそうじ（今までの方式）は今日だけ表示。ルーティンから作った日付つきのそうじは、その日に表示
+  const cleanToday = cleanTasks.filter(t => t.store===viewStore && (t.date ? t.date===viewDate : activeDay===0));
   const allToday = [
     ...prepToday.map(t=>({...t,_cat:"prep"})),
-    ...(activeDay===0 ? cleanToday.map(t=>({...t,_cat:"clean"})) : []),
+    ...cleanToday.map(t=>({...t,_cat:"clean"})),
   ];
   const todo = allToday.filter(t=>!t.completedAt);
   const done = allToday.filter(t=>!!t.completedAt);
@@ -5394,6 +5411,19 @@ function TopView({onWaste, hideStockAlert=false, allPrepTasks, setAllPrepTasks, 
       r.freq==="custom"  ? (r.customDays||[]).includes(dow) :
       r.freq==="once"    ? r.onceDate===viewDate :
       r.freq==="free"    ? (r.freeDates||[]).includes(viewDate) : false;
+    // そうじのルーティン：その日のそうじタスクを作る（同じルーティン・同じ日は1回だけ）
+    const cleanMatches = routines.filter(r => r.active && r.category==="clean" && r.store===viewStore && matchToday(r));
+    if (cleanMatches.length) setCleanTasks(p => {
+      // 同じルーティンの同じ日、または同じ名前の「日付なし・未完了」のそうじがあれば作らない（二重にならないように）
+      const toAdd = cleanMatches.filter(r => !p.some(t => t.store===viewStore && (
+        (t.routineId===r.id && t.date===viewDate) || (!t.date && !t.completedAt && t.name===r.name))));
+      if (toAdd.length === 0) return p;
+      return [...p, ...toAdd.map(r => ({
+        id: "ct_" + r.id + "_" + viewDate, routineId: r.id, name: r.name, area: "その他",
+        deadline: r.deadline || "12:00", store: viewStore, assignedTo: r.assignedTo || null,
+        date: viewDate, completedAt: null, completedBy: null, points: 2,
+      }))];
+    });
     const matches = routines.filter(r => r.active && r.category==="prep" && r.store===viewStore && matchToday(r));
     if (matches.length === 0) return;
     // 重複判定は「現在の最新リスト(p)」で行う。削除時(allPrepTasks変化)には再実行しないので、
@@ -5471,8 +5501,8 @@ function TopView({onWaste, hideStockAlert=false, allPrepTasks, setAllPrepTasks, 
     if (addCategory==="prep") {
       setAllPrepTasks(p=>[...p,{id:"pt"+Date.now(),name:it.name,recipeId:it.recipeId,deadline:it.deadline,store:viewStore,assignedTo:null,date:viewDate,completedAt:null,completedBy:null,amountVerified:false,amountLog:[]}]);
     } else {
-      if ((cleanTasks||[]).some(c=>c.store===viewStore && c.name===it.name && !c.completedAt)) { notify("「"+it.name+"」は既にあります","warn"); return; }
-      setCleanTasks(p=>[...p,{id:"ct"+Date.now(),name:it.name,area:"その他",deadline:it.deadline,store:viewStore,assignedTo:null,completedAt:null,completedBy:null,points:2}]);
+      if ((cleanTasks||[]).some(c=>c.store===viewStore && c.name===it.name && !c.completedAt && (!c.date || c.date===viewDate))) { notify("「"+it.name+"」は既にあります","warn"); return; }
+      setCleanTasks(p=>[...p,{id:"ct"+Date.now(),name:it.name,area:"その他",deadline:it.deadline,store:viewStore,assignedTo:null,completedAt:null,completedBy:null,points:2, ...(activeDay!==0 ? {date:viewDate} : {})}]);
     }
     notify("✓ 「"+it.name+"」を追加しました");
   };
@@ -5490,7 +5520,7 @@ function TopView({onWaste, hideStockAlert=false, allPrepTasks, setAllPrepTasks, 
       setCleanTasks(p=>[...p,{
         id:"ct"+Date.now(), name:addName, area:"その他",
         deadline:addDeadline, store:viewStore, assignedTo:addAssign,
-        completedAt:null, completedBy:null, points:2
+        completedAt:null, completedBy:null, points:2, ...(activeDay!==0 ? {date:viewDate} : {})
       }]);
     }
     setAddName(""); setAddDeadline("10:00"); setAddAssign(null);
@@ -5510,12 +5540,12 @@ function TopView({onWaste, hideStockAlert=false, allPrepTasks, setAllPrepTasks, 
       } else {
         // ルーティンをそのままタスクに追加
         const prepAlready = item.category==="prep" && allPrepTasks.some(t=>t.name===item.name&&t.date===viewDate&&t.store===viewStore);
-        const cleanAlready = item.category==="clean" && cleanTasks.some(t=>t.name===item.name&&t.store===viewStore&&!t.completedAt);
+        const cleanAlready = item.category==="clean" && cleanTasks.some(t=>t.name===item.name&&t.store===viewStore&&!t.completedAt&&(!t.date||t.date===viewDate));
         if (prepAlready || cleanAlready) { notify("すでに追加済みです","warn"); setPaletteDrag(null); return; }
         if (item.category==="prep") {
           setAllPrepTasks(p=>[...p,{id:"pt"+Date.now(),name:item.name,recipeId:null,deadline:item.deadline,store:viewStore,assignedTo:null,date:viewDate,completedAt:null,completedBy:null,amountVerified:false,amountLog:[]}]);
         } else {
-          setCleanTasks(p=>[...p,{id:"ct"+Date.now(),name:item.name,area:"その他",deadline:item.deadline,store:viewStore,assignedTo:null,completedAt:null,completedBy:null,points:2}]);
+          setCleanTasks(p=>[...p,{id:"ct"+Date.now(),name:item.name,area:"その他",deadline:item.deadline,store:viewStore,assignedTo:null,completedAt:null,completedBy:null,points:2, ...(activeDay!==0 ? {date:viewDate} : {})}]);
         }
         notify(`✓ 「${item.name}」を追加しました`);
       }
@@ -7452,8 +7482,11 @@ function AppInner() {
     });
 
     // クリーン：未完了に carriedOver フラグを付ける（日付なしなので目印だけ）
+    //   ルーティンから作った日付つきのそうじは、昨日の未完了を今日へ移す（同じルーティンの今日の分は作られない）
     setCleanTasks(prev => prev.map(t =>
-      !t.completedAt ? {...t, carriedOver: true} : t
+      t.completedAt ? t :
+      !t.date ? {...t, carriedOver: true} :
+      t.date === yesterday ? {...t, date: todayStr, carriedOver: true, carriedDate: yesterday} : t
     ));
 
     setLastCarryDate(todayStr);
@@ -7626,7 +7659,7 @@ function AppInner() {
             if (customAdd.category==="prep") {
               setAllPrepTasks(p=>[...p,{id:"pt"+Date.now(),name,recipeId:null,deadline,store:customAdd.store,assignedTo:null,date:customAdd.date,completedAt:null,completedBy:null,amountVerified:false,amountLog:[]}]);
             } else {
-              setCleanTasks(p=>[...p,{id:"ct"+Date.now(),name,area:"その他",deadline,store:customAdd.store,assignedTo:null,completedAt:null,completedBy:null,points:2}]);
+              setCleanTasks(p=>[...p,{id:"ct"+Date.now(),name,area:"その他",deadline,store:customAdd.store,assignedTo:null,completedAt:null,completedBy:null,points:2, ...(customAdd.date && customAdd.date!==todayStr ? {date:customAdd.date} : {})}]);
             }
             setCustomAdd(null);
             notify("✓ 「"+name+"」を追加しました");
@@ -7836,7 +7869,7 @@ function AppInner() {
             const ritems = (routines||[]).filter(r=>r.active && r.store===viewStore);
             const prepItems  = ritems.filter(r=>r.category==="prep").map(r=>({id:r.id,name:r.name,category:"prep",deadline:r.deadline,recipeId:r.recipeId}));
             // クリーンは常設方式：その店舗の既存クリーン項目（重複なし）をテンプレートとして並べる
-            const cleanNames = [...new Set((cleanTasks||[]).filter(c=>c.store===viewStore).map(c=>c.name))];
+            const cleanNames = [...new Set([...ritems.filter(r=>r.category==="clean").map(r=>r.name), ...(cleanTasks||[]).filter(c=>c.store===viewStore).map(c=>c.name)])];
             const cleanItems = cleanNames.map(n=>{ const ex=(cleanTasks||[]).find(c=>c.store===viewStore&&c.name===n); return {id:"clean_"+n, name:n, category:"clean", deadline: ex?.deadline||"12:00"}; });
             const customItems = [{id:"_cp",name:"カスタム仕込み",category:"prep",deadline:"10:00"},{id:"_cc",name:"カスタムクリーン",category:"clean",deadline:"12:00"}];
             const dateS = [0,1,2,3].map(i=>dateStr(-i))[topActiveDay] || dateStr(0);
@@ -7851,10 +7884,10 @@ function AppInner() {
                 setAllPrepTasks(p=>[...p,{id:"pt"+Date.now(),name:item.name,recipeId:item.recipeId||null,deadline:item.deadline,store:viewStore,assignedTo:null,date:dateS,completedAt:null,completedBy:null,amountVerified:false,amountLog:[]}]);
               } else {
                 // 既に未完了の同名クリーンがあれば重複追加しない（常設方式）
-                if ((cleanTasks||[]).some(c=>c.store===viewStore && c.name===item.name && !c.completedAt)) {
+                if ((cleanTasks||[]).some(c=>c.store===viewStore && c.name===item.name && !c.completedAt && (!c.date || c.date===dateS))) {
                   notify("「"+item.name+"」は既にあります","warn"); return;
                 }
-                setCleanTasks(p=>[...p,{id:"ct"+Date.now(),name:item.name,area:"その他",deadline:item.deadline,store:viewStore,assignedTo:null,completedAt:null,completedBy:null,points:2}]);
+                setCleanTasks(p=>[...p,{id:"ct"+Date.now(),name:item.name,area:"その他",deadline:item.deadline,store:viewStore,assignedTo:null,completedAt:null,completedBy:null,points:2, ...(dateS!==todayStr ? {date:dateS} : {})}]);
               }
               notify("✓ 「"+item.name+"」を追加しました");
             };
